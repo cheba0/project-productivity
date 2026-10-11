@@ -11,7 +11,6 @@ import {
 
 interface AuthState {
   user: User | null
-  isAuthenticated: boolean
   isLoading: boolean
 
   login: () => void
@@ -22,7 +21,6 @@ interface AuthState {
 
 export const useAuthStore = create<AuthState>((set) => ({
   user: null,
-  isAuthenticated: false,
   isLoading: false,
 
 
@@ -35,30 +33,14 @@ export const useAuthStore = create<AuthState>((set) => ({
   checkAuth: async () => {
     set({ isLoading: true })
 
-    try {
-      const user = await getCurrentUser()
-
-      set({
-        user,
-        isAuthenticated: user !== null,
-        isLoading: false,
-      })
-    } catch {
-      set({
-        user: null,
-        isAuthenticated: false,
-        isLoading: false,
-      })
-    }
+    const user = await getCurrentUser()
+    set({ user, isLoading: false })
   },
 
 
   logout: async () => {
     await apiLogout()
 
-    set({
-      user: null,
-      isAuthenticated: false,
-    })
+    set({ user: null })
   },
 }))

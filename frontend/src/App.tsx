@@ -4,7 +4,6 @@ import { useAuthStore } from './store/authStore'
 
 function App() {
   const user = useAuthStore((state) => state.user)
-  const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
   const isLoading = useAuthStore((state) => state.isLoading)
   const login = useAuthStore((state) => state.login)
   const checkAuth = useAuthStore((state) => state.checkAuth)
@@ -26,7 +25,7 @@ function App() {
         </p>
       )}
 
-      {isAuthenticated && user ? (
+      {user ? (
         <div>
           <h2>
             Привет, {user.first_name}!

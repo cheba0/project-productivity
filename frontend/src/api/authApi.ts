@@ -1,3 +1,6 @@
+import type { User } from '../types/auth'
+
+
 const API_URL = 'http://localhost:8000'
 
 export function login(): void {
@@ -5,7 +8,7 @@ export function login(): void {
 }
 
 
-export async function getCurrentUser() {
+export async function getCurrentUser(): Promise<User | null> {
   const response = await fetch(`${API_URL}/auth/me`, {
     credentials: 'include',
   })
@@ -14,23 +17,13 @@ export async function getCurrentUser() {
     return null
   }
 
-  if (!response.ok) {
-    throw new Error('Не удалось проверить сессию')
-  }
-
-  return response.json()
+  return response.json() as Promise<User>
 }
 
 
-export async function logout() {
-  const response = await fetch(`${API_URL}/auth/logout`, {
+export async function logout(): Promise<void> {
+  await fetch(`${API_URL}/auth/logout`, {
     method: 'POST',
     credentials: 'include',
   })
-
-  if (!response.ok) {
-    throw new Error('Не удалось выйти')
-  }
-
-  return response.json()
 }

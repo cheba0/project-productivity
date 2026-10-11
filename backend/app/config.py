@@ -2,7 +2,6 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    # TPU ключей нет
     tpu_client_id: str | None = None
     tpu_client_secret: str | None = None
     tpu_api_key: str | None = None
