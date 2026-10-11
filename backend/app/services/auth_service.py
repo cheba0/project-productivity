@@ -1,77 +1,77 @@
 import secrets
+import time
+from threading import Lock
 
 from app.schemas.auth import User
 
 
-# Временное хранилище пользователей
 users: dict[int, User] = {}
 
-# Временное хранилище сессий
-sessions: dict[str, int] = {}
+# Токены ТПУ хранятся только на сервере.
+sessions: dict[str, dict] = {}
+
+storage_lock = Lock()
 
 
-def get_mock_tpu_user() -> dict:
-    """
-    Имитирует ответ API ТПУ.
-    Потом эту функцию заменим реальным запросом.
-    """
-    return {
-        "user_id": 163098,
-        "email": "user@tpu.ru",
-        "lichnost": {
-            "familiya": "Иванов",
-            "imya": "Иван",
-        },
-    }
+def create_tpu_session(
+    profile: dict,
+    tokens: dict,
+) -> str:
+    try:
+        user = User(
+            id=int(profile["user_id"]),
+            email=profile["email"],
+            first_name=profile["first_name"],
+            last_name=profile["last_name"],
+        )
+    except (KeyError, TypeError, ValueError):
+        raise ValueError(
+            "Неожиданный формат профиля ТПУ"
+        ) from None
 
+    try:
+        access_token = tokens["access_token"]
+        lifetime = int(tokens["expires_in"])
 
-def register_user() -> tuple[User, str]:
-    tpu_user = get_mock_tpu_user()
+        if not isinstance(access_token, str) or not access_token:
+            raise ValueError
 
-    user_id = tpu_user["user_id"]
-
-    if user_id in users:
-        raise ValueError("User already registered")
-
-    person = tpu_user["lichnost"]
-
-    user = User(
-        id=user_id,
-        email=tpu_user["email"],
-        first_name=person["imya"],
-        last_name=person["familiya"],
-    )
-
-    users[user_id] = user
+        if lifetime <= 0:
+            raise ValueError
+    except (KeyError, TypeError, ValueError):
+        raise ValueError(
+            "Неожиданный формат токена ТПУ"
+        ) from None
 
     session_id = secrets.token_urlsafe(32)
-    sessions[session_id] = user_id
 
-    return user, session_id
+    with storage_lock:
+        users[user.id] = user
 
+        sessions[session_id] = {
+            "user_id": user.id,
+            "access_token": access_token,
+            "refresh_token": tokens.get("refresh_token"),
+            "expires_at": time.time() + min(lifetime, 86400),
+        }
 
-def login_user() -> tuple[User, str]:
-    tpu_user = get_mock_tpu_user()
-
-    user_id = tpu_user["user_id"]
-
-    if user_id not in users:
-        raise ValueError("User is not registered")
-
-    session_id = secrets.token_urlsafe(32)
-    sessions[session_id] = user_id
-
-    return users[user_id], session_id
+    return session_id
 
 
 def get_user_by_session(session_id: str) -> User | None:
-    user_id = sessions.get(session_id)
+    with storage_lock:
+        session = sessions.get(session_id)
 
-    if user_id is None:
-        return None
+        if session is None:
+            return None
 
-    return users.get(user_id)
+        if session["expires_at"] <= time.time():
+            sessions.pop(session_id, None)
+            return None
+
+        return users.get(session["user_id"])
 
 
 def logout(session_id: str) -> None:
-    sessions.pop(session_id, None)
+    with storage_lock:
+        sessions.pop(session_id, None)

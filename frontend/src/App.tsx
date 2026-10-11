@@ -14,10 +14,17 @@ function App() {
 
   if (isLoading) {return <div>Загрузка...</div>}
 
+  const authError = new URLSearchParams(window.location.search).get('auth_error')
 
   return (
     <div>
       <h1>Наше приложение</h1>
+      
+      {authError && (
+        <p role="alert">
+          Не удалось войти через ТПУ. Попробуйте ещё раз.
+        </p>
+      )}
 
       {isAuthenticated && user ? (
         <div>
@@ -35,7 +42,7 @@ function App() {
         </div>
       ) : (
         <button onClick={login}>
-          Войти
+          Войти через ТПУ
         </button>
       )}
     </div>
