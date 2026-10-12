@@ -1,15 +1,12 @@
 ﻿
 import secrets
-from urllib.parse import urlencode
 
 import httpx
-
 from fastapi import FastAPI, Depends, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
-from auth_service.app.config import settings
 from auth_service.app.database import get_db
 from auth_service.app.services.tpu_oauth import (
     get_authorization_url,
@@ -27,6 +24,8 @@ from auth_service.app.services.session_service import (
 app = FastAPI(title="Auth Service")
 
 FRONTEND_URL = "http://localhost:5173"
+OAUTH_COOKIE_PATH = "/auth/tpu"
+
 
 app.add_middleware(
     CORSMiddleware,
@@ -45,20 +44,63 @@ def health():
 @app.get("/auth/tpu/login")
 def tpu_login():
     state = secrets.token_urlsafe(32)
+    code_verifier = secrets.token_urlsafe(64)
+
+    authorization_url = get_authorization_url(
+        state,
+        code_verifier,
+    )
 
     response = RedirectResponse(
-        url=get_authorization_url(state),
+        authorization_url,
         status_code=302,
     )
 
+    cookie_options = {
+        "httponly": True,
+        "secure": False,
+        "samesite": "lax",
+        "max_age": 600,
+        "path": OAUTH_COOKIE_PATH,
+    }
+
     response.set_cookie(
-        key="tpu_oauth_state",
-        value=state,
-        httponly=True,
-        secure=False,
-        samesite="lax",
-        max_age=600,
-        path="/auth/tpu",
+        "tpu_oauth_state",
+        state,
+        **cookie_options,
+    )
+
+    response.set_cookie(
+        "tpu_code_verifier",
+        code_verifier,
+        **cookie_options,
+    )
+
+    return response
+
+
+def redirect_to_frontend(
+    error: str | None = None,
+) -> RedirectResponse:
+    url = (
+        f"{FRONTEND_URL}/?auth_error={error}"
+        if error
+        else FRONTEND_URL
+    )
+
+    response = RedirectResponse(
+        url,
+        status_code=303,
+    )
+
+    response.delete_cookie(
+        "tpu_oauth_state",
+        path=OAUTH_COOKIE_PATH,
+    )
+
+    response.delete_cookie(
+        "tpu_code_verifier",
+        path=OAUTH_COOKIE_PATH,
     )
 
     return response
@@ -70,49 +112,58 @@ async def tpu_callback(
     db: Session = Depends(get_db),
 ):
     state = request.query_params.get("state")
-    expected_state = request.cookies.get("tpu_oauth_state")
     code = request.query_params.get("code")
+    error = request.query_params.get("error")
+
+    expected_state = request.cookies.get("tpu_oauth_state")
+    code_verifier = request.cookies.get("tpu_code_verifier")
+
+    valid_state = bool(
+        state
+        and expected_state
+        and secrets.compare_digest(
+            state,
+            expected_state,
+        )
+    )
 
     if (
-        not state
-        or not expected_state
-        or not secrets.compare_digest(state, expected_state)
+        error
         or not code
+        or not code_verifier
+        or not valid_state
     ):
-        response = RedirectResponse(
-            f"{FRONTEND_URL}/?auth_error=invalid_state",
-            status_code=302,
-        )
-        response.delete_cookie(
-            "tpu_oauth_state",
-            path="/auth/tpu",
-        )
-        return response
+        return redirect_to_frontend("invalid_state")
 
     try:
-        token_data = await exchange_code_for_token(code)
+        token_data = await exchange_code_for_token(
+            code,
+            code_verifier,
+        )
+
         tpu_user = await get_tpu_user(
             token_data["access_token"]
         )
 
-        user = get_or_create_user(db, tpu_user)
-        session_token = create_session(db, user)
-
-    except (httpx.HTTPError, ValueError, KeyError):
-        response = RedirectResponse(
-            f"{FRONTEND_URL}/?auth_error=tpu_failed",
-            status_code=302,
+        user = get_or_create_user(
+            db,
+            tpu_user,
         )
-        response.delete_cookie(
-            "tpu_oauth_state",
-            path="/auth/tpu",
-        )
-        return response
 
-    response = RedirectResponse(
-        FRONTEND_URL,
-        status_code=302,
-    )
+        session_token = create_session(
+            db,
+            user,
+        )
+
+    except (
+        httpx.HTTPError,
+        ValueError,
+        KeyError,
+        TypeError,
+    ):
+        return redirect_to_frontend("tpu_failed")
+
+    response = redirect_to_frontend()
 
     response.set_cookie(
         key="session_token",
@@ -122,11 +173,6 @@ async def tpu_callback(
         samesite="lax",
         max_age=7 * 24 * 60 * 60,
         path="/",
-    )
-
-    response.delete_cookie(
-        "tpu_oauth_state",
-        path="/auth/tpu",
     )
 
     return response
@@ -139,7 +185,10 @@ def get_current_user(
 ):
     token = request.cookies.get("session_token")
 
-    user = get_user_by_session(db, token)
+    user = get_user_by_session(
+        db,
+        token,
+    )
 
     if user is None:
         raise HTTPException(
@@ -152,7 +201,11 @@ def get_current_user(
     return {
         "id": str(user.id),
         "first_name": parts[0],
-        "last_name": parts[1] if len(parts) > 1 else "",
+        "last_name": (
+            parts[1]
+            if len(parts) > 1
+            else ""
+        ),
         "email": user.email,
     }
 
@@ -165,7 +218,10 @@ def logout(
     token = request.cookies.get("session_token")
 
     if token:
-        delete_session(db, token)
+        delete_session(
+            db,
+            token,
+        )
 
     response = Response(status_code=204)
 
