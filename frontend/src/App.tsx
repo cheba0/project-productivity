@@ -4,7 +4,6 @@ import { useAuthStore } from './store/authStore'
 
 function App() {
   const user = useAuthStore((state) => state.user)
-  const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
   const isLoading = useAuthStore((state) => state.isLoading)
   const login = useAuthStore((state) => state.login)
   const checkAuth = useAuthStore((state) => state.checkAuth)
@@ -14,12 +13,19 @@ function App() {
 
   if (isLoading) {return <div>Загрузка...</div>}
 
+  const authError = new URLSearchParams(window.location.search).get('auth_error')
 
   return (
     <div>
       <h1>Наше приложение</h1>
+      
+      {authError && (
+        <p role="alert">
+          Не удалось войти через ТПУ. Попробуйте ещё раз.
+        </p>
+      )}
 
-      {isAuthenticated && user ? (
+      {user ? (
         <div>
           <h2>
             Привет, {user.first_name}!
@@ -35,7 +41,7 @@ function App() {
         </div>
       ) : (
         <button onClick={login}>
-          Войти
+          Войти через ТПУ
         </button>
       )}
     </div>
