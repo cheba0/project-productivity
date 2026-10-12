@@ -1,0 +1,103 @@
+
+services:
+  auth_db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: auth_user
+      POSTGRES_PASSWORD: ${AUTH_DB_PASSWORD}
+      POSTGRES_DB: auth_db
+    ports:
+      - "127.0.0.1:5440:5432"
+    volumes:
+      - auth_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U auth_user -d auth_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  gitlab_db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: gitlab_user
+      POSTGRES_PASSWORD: ${GITLAB_DB_PASSWORD}
+      POSTGRES_DB: gitlab_db
+    ports:
+      - "127.0.0.1:5434:5432"
+    volumes:
+      - gitlab_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gitlab_user -d gitlab_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redmine_db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: redmine_user
+      POSTGRES_PASSWORD: ${REDMINE_DB_PASSWORD}
+      POSTGRES_DB: redmine_db
+    ports:
+      - "127.0.0.1:5435:5432"
+    volumes:
+      - redmine_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U redmine_user -d redmine_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  analytics_db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: analytics_user
+      POSTGRES_PASSWORD: ${ANALYTICS_DB_PASSWORD}
+      POSTGRES_DB: analytics_db
+    ports:
+      - "127.0.0.1:5436:5432"
+    volumes:
+      - analytics_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U analytics_user -d analytics_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+
+  kafka:
+    image: apache/kafka:3.9.1
+    hostname: kafka
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:9092:9092"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka:9093"
+
+      KAFKA_LISTENERS: "PLAINTEXT_HOST://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093,PLAINTEXT_DOCKER://0.0.0.0:9094"
+      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT_HOST://localhost:9092,PLAINTEXT_DOCKER://kafka:9094"
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "PLAINTEXT_HOST:PLAINTEXT,PLAINTEXT_DOCKER:PLAINTEXT,CONTROLLER:PLAINTEXT"
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT_DOCKER
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+
+
+volumes:
+  auth_db_data:
+  gitlab_db_data:
+  redmine_db_data:
+  analytics_db_data:
+  kafka_data:
