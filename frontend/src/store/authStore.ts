@@ -33,7 +33,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   checkAuth: async () => {
     set({ isLoading: true })
 
-    const user = await getCurrentUser()
+    const user = await getCurrentUser().catch(() => null)
     set({ user, isLoading: false })
   },
 
