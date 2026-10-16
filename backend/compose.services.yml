@@ -1,0 +1,40 @@
+services:
+  auth_service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command: uvicorn auth_service.app.main:app --host 0.0.0.0 --port 8000
+    env_file: .env
+    ports:
+      - "127.0.0.1:8000:8000"
+
+  gitlab_service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command: uvicorn gitlab_service.app.main:app --host 0.0.0.0 --port 8000
+    env_file: .env
+    ports:
+      - "127.0.0.1:8001:8000"
+
+  redmine_service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command: uvicorn redmine_service.app.main:app --host 0.0.0.0 --port 8000
+    env_file: .env
+    ports:
+      - "127.0.0.1:8002:8000"
+
+  analytics_service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command: uvicorn analytics_service.app.main:app --host 0.0.0.0 --port 8000
+    env_file: .env
+    ports:
+      - "127.0.0.1:8003:8000"

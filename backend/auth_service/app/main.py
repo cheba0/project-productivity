@@ -23,7 +23,7 @@ from auth_service.app.services.session_service import (
 
 app = FastAPI(title="Auth Service")
 
-FRONTEND_URL = "http://localhost:5173"
+FRONTEND_URL = "https://tpu-metrics.duckdns.org"
 OAUTH_COOKIE_PATH = "/auth/tpu"
 
 

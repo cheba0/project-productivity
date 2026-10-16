@@ -1,7 +1,7 @@
 import type { User } from '../types/auth'
 
 
-const API_URL = 'http://localhost:8000'
+const API_URL = ''
 
 export function login(): void {
   window.location.assign(`${API_URL}/auth/tpu/login`)
