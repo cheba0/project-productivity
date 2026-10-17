@@ -17,6 +17,10 @@ export async function getCurrentUser(): Promise<User | null> {
     return null
   }
 
+  if (!response.ok) {
+    throw new Error('Не удалось проверить сессию')
+  }
+
   return response.json() as Promise<User>
 }
 
