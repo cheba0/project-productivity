@@ -6,7 +6,7 @@ import {
 } from 'react'
 import { Header } from '../widgets/header'
 import { Sidebar } from '../widgets/sidebar'
-import { ProjectsPage } from '../pages/projects'
+import { AppRoutes } from './router/AppRoutes'
 import styles from './App.module.css'
 import { useAuthStore } from '../store/authStore'
 
@@ -103,7 +103,7 @@ export default function App() {
               </p>
             )}
 
-            <ProjectsPage />
+            <AppRoutes />
           </>
         ) : (
           <div>

@@ -2,6 +2,7 @@ import { Archive, Settings, Users } from 'lucide-react'
 import * as Progress from '@radix-ui/react-progress'
 import { activityLabels, type Project } from '../model/types'
 import styles from './ProjectCard.module.css'
+import { Link } from 'react-router'
 
 const dateFormatter = new Intl.DateTimeFormat('ru-RU')
 
@@ -108,14 +109,15 @@ export function ProjectCard({ project }: { project: Project }) {
     <article className={styles.card}>
       <div className={styles.heading}>
         <h2>{project.name}</h2>
-        <button
+        <Link
           className="icon-button"
-          disabled
-          aria-label={`Настройки проекта ${project.name}: пока недоступны`}
-          title="Настройки — на следующем этапе"
+          to={`/projects/${encodeURIComponent(project.id)}/settings`}
+          state={{ projectName: project.name }}
+          aria-label={`Настройки проекта «${project.name}»`}
+          title="Настройки проекта"
         >
-          <Settings size={18} aria-hidden="true" />
-        </button>
+          <Settings size={20} aria-hidden="true" />
+        </Link>
       </div>
       <span className={styles.status}>
         <span className={styles.dot} data-status={activity} />

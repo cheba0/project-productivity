@@ -1,13 +1,14 @@
-import { useEffect, useRef, useState } from 'react'
-import { Info, Plus, RefreshCw, X } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Info, Plus, RefreshCw } from 'lucide-react'
 import {
-  activityLabels,
   getProjects,
   ProjectCard,
   type Project,
   type ProjectCategory,
 } from '../../../entities/project'
 import { demoProjects } from '../model/demoProjects'
+import { StatusLegendDialog } from './StatusLegendDialog'
+import { Link } from 'react-router'
 import styles from './ProjectsPage.module.css'
 
 const categories: { value: ProjectCategory; label: string }[] = [
@@ -23,7 +24,7 @@ export function ProjectsPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [reload, setReload] = useState(0)
-  const statusDialogRef = useRef<HTMLDialogElement>(null)
+  const [isStatusLegendOpen, setIsStatusLegendOpen] = useState(false)
 
   useEffect(() => {
     if (source !== 'api') return
@@ -108,220 +109,16 @@ export function ProjectsPage() {
           className="button"
           aria-haspopup="dialog"
           aria-controls="status-legend"
-          onClick={() => statusDialogRef.current?.showModal()}
+          onClick={() => setIsStatusLegendOpen(true)}
         >
           <Info size={16} aria-hidden="true" />
           Шкала статусов
         </button>
       </div>
-      <dialog
-        ref={statusDialogRef}
-        id="status-legend"
-        className={styles.statusDialog}
-        aria-labelledby="status-dialog-title"
-        onClick={(event) => {
-          if (event.target !== event.currentTarget) return
-
-          const bounds = event.currentTarget.getBoundingClientRect()
-
-          const clickedOutside =
-            event.clientX < bounds.left ||
-            event.clientX > bounds.right ||
-            event.clientY < bounds.top ||
-            event.clientY > bounds.bottom
-
-          if (clickedOutside) {
-            event.currentTarget.close()
-          }
-        }}
-      >
-        <div className={styles.dialogHeader}>
-          <h2 id="status-dialog-title">Шкала статусов</h2>
-
-          <button
-            type="button"
-            className={styles.closeButton}
-            aria-label="Закрыть шкалу статусов"
-            onClick={() => statusDialogRef.current?.close()}
-            autoFocus
-          >
-            <X size={22} aria-hidden="true" />
-          </button>
-        </div>
-
-        <section
-          className={styles.sourceSection}
-          aria-labelledby="source-status-title"
-        >
-          <h3 id="source-status-title">
-            Индикатор источника (GitLab, Redmine)
-          </h3>
-
-          <dl className={styles.sourceScale}>
-            <div>
-              <dt>
-                <span
-                  className={styles.statusDot}
-                  data-color="green"
-                  aria-hidden="true"
-                />
-                Зелёный
-              </dt>
-              <dd>активность ≤ 3 дн. назад</dd>
-            </div>
-
-            <div>
-              <dt>
-                <span
-                  className={styles.statusDot}
-                  data-color="yellow"
-                  aria-hidden="true"
-                />
-                Жёлтый
-              </dt>
-              <dd>4–7 дн. назад</dd>
-            </div>
-
-            <div>
-              <dt>
-                <span
-                  className={styles.statusDot}
-                  data-color="red"
-                  aria-hidden="true"
-                />
-                Красный
-              </dt>
-              <dd>более 7 дн. назад</dd>
-            </div>
-          </dl>
-        </section>
-
-        <div className={styles.statusColumns}>
-          <section aria-labelledby="project-status-title">
-            <h3 id="project-status-title">Статус проекта</h3>
-
-            <dl className={styles.statusList}>
-              <div>
-                <dt>
-                  <span
-                    className={styles.statusDot}
-                    data-color="green"
-                    aria-hidden="true"
-                  />
-                  Идёт работа
-                </dt>
-                <dd>оба источника зелёные</dd>
-              </div>
-
-              <div>
-                <dt>
-                  <span
-                    className={styles.statusDot}
-                    data-color="yellow"
-                    aria-hidden="true"
-                  />
-                  Замедление
-                </dt>
-                <dd>хотя бы один не зелёный</dd>
-              </div>
-
-              <div>
-                <dt>
-                  <span
-                    className={styles.statusDot}
-                    data-color="red"
-                    aria-hidden="true"
-                  />
-                  Простой
-                </dt>
-                <dd>оба источника красные</dd>
-              </div>
-
-              <div>
-                <dt>
-                  <span
-                    className={styles.statusDot}
-                    data-color="gray"
-                    aria-hidden="true"
-                  />
-                  Загрузка данных
-                </dt>
-                <dd>идёт импорт</dd>
-              </div>
-            </dl>
-          </section>
-
-          <section aria-labelledby="student-status-title">
-            <h3 id="student-status-title">Статус студента</h3>
-
-            <dl className={styles.statusList}>
-              <div>
-                <dt>
-                  <span
-                    className={styles.statusDot}
-                    data-color="green"
-                    aria-hidden="true"
-                  />
-                  Активен
-                </dt>
-                <dd>оба источника зелёные</dd>
-              </div>
-
-              <div>
-                <dt>
-                  <span
-                    className={styles.statusDot}
-                    data-color="yellow"
-                    aria-hidden="true"
-                  />
-                  Частично
-                </dt>
-                <dd>один зелёный, другой нет</dd>
-              </div>
-
-              <div>
-                <dt>
-                  <span
-                    className={styles.statusDot}
-                    data-color="orange"
-                    aria-hidden="true"
-                  />
-                  Замедление
-                </dt>
-                <dd>нет зелёных, есть жёлтый</dd>
-              </div>
-
-              <div>
-                <dt>
-                  <span
-                    className={styles.statusDot}
-                    data-color="red"
-                    aria-hidden="true"
-                  />
-                  Простой
-                </dt>
-                <dd>оба красные</dd>
-              </div>
-
-              <div>
-                <dt>
-                  <span
-                    className={styles.statusDot}
-                    data-color="gray"
-                    aria-hidden="true"
-                  />
-                  Нет данных
-                </dt>
-                <dd>аккаунты не привязаны</dd>
-              </div>
-            </dl>
-          </section>
-        </div>
-
-        <p className={styles.dialogNote}>
-          Дни задаются отдельно для каждого проекта в его настройках.
-        </p>
-      </dialog>
+      <StatusLegendDialog
+        open={isStatusLegendOpen}
+        onClose={() => setIsStatusLegendOpen(false)}
+      />
       {source === 'api' && loading ? (
         <p role="status" className={styles.message}>
           Загрузка проектов…
@@ -340,16 +137,11 @@ export function ProjectsPage() {
               <ProjectCard key={project.id} project={project} />
             ))}
             {(source === 'api' || category !== 'archived') && (
-              <button
-                className={styles.newProject}
-                disabled
-                title="Создание проектов — следующий этап"
-              >
+              <Link className={styles.newProject} to="/projects/new">
                 <Plus size={34} strokeWidth={1.5} aria-hidden="true" />
                 <span>Новый проект</span>
                 <small>Название · витрина · GitLab · Redmine</small>
-                <small>Создание пока недоступно</small>
-              </button>
+              </Link>
             )}
           </div>
         </>

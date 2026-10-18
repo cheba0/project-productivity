@@ -1,0 +1,214 @@
+.page {
+  width: 100%;
+  min-width: 0;
+  max-width: 88%;
+  margin: 0 auto;
+  color: #292929;
+}
+
+.heading {
+  margin-bottom: 24px;
+}
+
+.heading h1 {
+  margin: 0 0 8px;
+  font-size: 28px;
+}
+
+.heading p {
+  margin: 0;
+  color: #858585;
+  line-height: 1.5;
+}
+
+.form {
+  display: grid;
+  gap: 20px;
+}
+
+.panel {
+  display: grid;
+  gap: 20px;
+  padding: 24px;
+  border: 1px solid #cecece;
+  border-radius: 16px;
+  background: #fcfcfc;
+}
+
+.panel h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.field {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  color: #666;
+  font-size: 14px;
+}
+
+.field input,
+.threshold input {
+  box-sizing: border-box;
+  min-width: 0;
+  border: 1px solid #999;
+  border-radius: 8px;
+  background: #fff;
+  color: #292929;
+  font: inherit;
+}
+
+.field input {
+  width: 100%;
+  min-height: 46px;
+  padding: 10px 14px;
+}
+
+.field input::placeholder {
+  color: #929292;
+}
+
+.field input:focus-visible,
+.threshold input:focus-visible,
+.page a:focus-visible,
+.page button:focus-visible {
+  outline: 2px solid #20bd46;
+  outline-offset: 3px;
+}
+
+.integrations {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px;
+}
+
+.integration {
+  display: grid;
+  gap: 18px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.integration legend {
+  margin-bottom: 18px;
+  padding: 0;
+  font-weight: 600;
+}
+
+.hint {
+  margin: 0;
+  color: #858585;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.statusRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.statusLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.dot {
+  flex-shrink: 0;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+}
+
+.green {
+  background: #80da97;
+}
+
+.yellow {
+  background: #ffd16b;
+}
+
+.red {
+  background: #ff8ca3;
+}
+
+.threshold {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 10px;
+  color: #666;
+  font-size: 14px;
+}
+
+.threshold input {
+  width: 64px;
+  height: 36px;
+  padding: 6px;
+  text-align: center;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 16px 0 24px;
+  border-top: 1px solid #ddd;
+}
+
+.createButton,
+.cancelButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  padding: 8px 16px;
+  border: 1px solid #777;
+  border-radius: 8px;
+  color: #292929;
+  font: inherit;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.createButton {
+  border-color: #20bd46;
+  background: #e4f7e8;
+}
+
+.createButton:hover {
+  background: #d5f1dc;
+}
+
+.cancelButton {
+  background: #fff;
+}
+
+.cancelButton:hover {
+  background: #f1f1f1;
+}
+
+@media (max-width: 640px) {
+  .panel {
+    padding: 18px;
+  }
+
+  .integrations {
+    grid-template-columns: 1fr;
+  }
+
+  .statusRow {
+    flex-wrap: wrap;
+  }
+
+  .heading h1 {
+    font-size: 24px;
+  }
+}

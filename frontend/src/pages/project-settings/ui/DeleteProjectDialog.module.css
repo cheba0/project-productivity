@@ -1,0 +1,143 @@
+.dialog {
+  box-sizing: border-box;
+  width: min(480px, calc(100% - 32px));
+  max-height: calc(100dvh - 32px);
+  margin: auto;
+  padding: 20px;
+  overflow-y: auto;
+
+  border: 1px solid #666;
+  border-radius: 14px;
+  background: #fff;
+  color: #292929;
+
+  box-shadow: 0 16px 48px rgb(0 0 0 / 20%);
+}
+
+.dialog::backdrop {
+  background: rgb(0 0 0 / 45%);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.header h2 {
+  margin: 0;
+  font-size: 18px;
+  line-height: 1.3;
+}
+
+.closeButton {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #777;
+  cursor: pointer;
+}
+
+.closeButton:hover {
+  background: #f1f1f1;
+}
+
+.description {
+  margin: 0 0 16px;
+  color: #666;
+  font-size: 14px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.form {
+  display: grid;
+  gap: 16px;
+}
+
+.field {
+  display: grid;
+  gap: 10px;
+  color: #666;
+  font-size: 14px;
+}
+
+.field input {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  min-height: 42px;
+  padding: 10px 12px;
+
+  border: 1px solid #999;
+  border-radius: 8px;
+  background: #fff;
+  color: #292929;
+  font: inherit;
+}
+
+.field input::placeholder {
+  color: #929292;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.deleteButton,
+.cancelButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 38px;
+  padding: 8px 14px;
+
+  border: 1px solid #777;
+  border-radius: 8px;
+  color: #292929;
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+/* Зелёное оформление — как на макете. */
+.deleteButton {
+  border-color: #20bd46;
+  background: #e4f7e8;
+}
+
+.deleteButton:hover:not(:disabled) {
+  background: #d5f1dc;
+}
+
+.deleteButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.cancelButton {
+  background: #fff;
+}
+
+.cancelButton:hover {
+  background: #f1f1f1;
+}
+
+.dialog input:focus-visible,
+.dialog button:focus-visible {
+  outline: 2px solid #20bd46;
+  outline-offset: 3px;
+}

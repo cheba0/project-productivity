@@ -5,6 +5,13 @@
   padding: 20px 10px;
   border-right: 1px solid var(--border);
   background: #f5f6f5;
+  position: sticky;
+  top: 0;
+  height: 100dvh;
+  min-height: 0;
+  box-sizing: border-box;
+  align-self: start;
+  overflow-y: auto;
 }
 .active {
   display: grid;

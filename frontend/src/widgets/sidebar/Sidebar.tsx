@@ -1,17 +1,17 @@
+import { Link } from 'react-router'
 import styles from './Sidebar.module.css'
 
 export function Sidebar() {
   return (
     <aside className={styles.sidebar}>
       <nav aria-label="Основная навигация">
-        <a
-          href="/"
+        <Link
+          to="/"
           className={styles.active}
           aria-label="Проекты"
-          aria-current="page"
           title="Проекты"
         >
-        </a>
+        </Link>
       </nav>
       <div className={styles.bottom}>
         <button
