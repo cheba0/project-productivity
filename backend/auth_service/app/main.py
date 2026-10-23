@@ -1,4 +1,4 @@
-﻿
+
 import secrets
 
 import httpx
@@ -22,6 +22,11 @@ from auth_service.app.services.session_service import (
 
 
 app = FastAPI(title="Auth Service")
+
+from auth_service.app.projects_router import router as projects_router
+app.include_router(projects_router)
+from auth_service.app.live_router import router as live_router
+app.include_router(live_router)
 
 FRONTEND_URL = "https://tpu-metrics.duckdns.org"
 OAUTH_COOKIE_PATH = "/auth/tpu"

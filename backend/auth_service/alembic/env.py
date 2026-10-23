@@ -13,6 +13,8 @@ sys.path.insert(0, str(BACKEND_DIR))
 from auth_service.app.config import settings
 from auth_service.app.database import Base
 from auth_service.app import models  # noqa: F401
+from auth_service.app import project_models  # noqa: F401
+from auth_service.app import member_profile  # noqa: F401
 
 
 config = context.config
