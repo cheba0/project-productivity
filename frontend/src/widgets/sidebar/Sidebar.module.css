@@ -1,0 +1,30 @@
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 20px 10px;
+  border-right: 1px solid var(--border);
+  background: #f5f6f5;
+  position: sticky;
+  top: 0;
+  height: 100dvh;
+  min-height: 0;
+  box-sizing: border-box;
+  align-self: start;
+  overflow-y: auto;
+}
+.active {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  background: var(--green);
+  color: white;
+  border-radius: 12px;
+}
+.bottom {
+  display: grid;
+  gap: 16px;
+  margin-top: auto;
+  padding-top: 24px;
+}
