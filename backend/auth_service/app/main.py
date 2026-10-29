@@ -28,7 +28,7 @@ app.include_router(projects_router)
 from auth_service.app.live_router import router as live_router
 app.include_router(live_router)
 
-FRONTEND_URL = "https://tpu-metrics.duckdns.org"
+FRONTEND_URL = "http://localhost:5173"
 OAUTH_COOKIE_PATH = "/auth/tpu"
 
 

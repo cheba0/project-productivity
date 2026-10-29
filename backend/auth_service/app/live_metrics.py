@@ -129,31 +129,97 @@ class Api:
 
 
 def fetch(project, start: date, end: date):
-    """Один вызов получает живые данные; никаких сохранённых/фиктивных метрик."""
     if start > end:
         raise HTTPException(422, 'start must be <= end')
+
     if (end - start).days > 366:
         raise HTTPException(422, 'Maximum period is 366 days')
-    if not project.gitlab_url or not project.redmine_url:
-        raise HTTPException(409, 'Both GitLab and Redmine project URLs are required')
-    git_base, git_id = _project_endpoint(project.gitlab_url, 'gitlab')
-    red_base, red_id = _project_endpoint(project.redmine_url, 'redmine')
-    git = Api(git_base, {'PRIVATE-TOKEN': _token(project.gitlab_token_encrypted)})
-    red = Api(red_base, {'X-Redmine-API-Key': _token(project.redmine_token_encrypted)})
-    # GitLab commits: дата коммита (не push), все страницы за период.
-    commits = git.pages(f'/projects/{git_id}/repository/commits', {
-        'since': start.isoformat() + 'T00:00:00Z',
-        'until': end.isoformat() + 'T23:59:59Z', 'all': 'true',
-    })
-    # Redmine issues: полный список, включая закрытые. Общее число задач не ограничено
-    # выбранным периодом, фильтрация по спринту выполняется по датам задач.
-    issues = red.pages('/issues.json', {'project_id': red_id, 'status_id': '*'})
-    entries = red.pages('/time_entries.json', {'project_id': red_id,
-                        'from': start.isoformat(), 'to': end.isoformat()})
-    return {'commits': commits, 'issues': issues, 'entries': entries,
-            'period': {'start': start.isoformat(), 'end': end.isoformat()},
-            'sources': {'gitlab': 'live', 'redmine': 'live'}}
 
+    if not project.gitlab_url and not project.redmine_url:
+        raise HTTPException(
+            409,
+            'Configure at least one integration',
+        )
+
+    commits = []
+    issues = []
+    entries = []
+
+    sources = {
+        'gitlab': 'not_configured',
+        'redmine': 'not_configured',
+    }
+
+    if project.gitlab_url:
+        git_base, git_id = _project_endpoint(
+            project.gitlab_url,
+            'gitlab',
+        )
+
+        git = Api(
+            git_base,
+            {
+                'PRIVATE-TOKEN': _token(
+                    project.gitlab_token_encrypted,
+                ),
+            },
+        )
+
+        commits = git.pages(
+            f'/projects/{git_id}/repository/commits',
+            {
+                'since': start.isoformat() + 'T00:00:00Z',
+                'until': end.isoformat() + 'T23:59:59Z',
+                'all': 'true',
+            },
+        )
+
+        sources['gitlab'] = 'live'
+
+    if project.redmine_url:
+        red_base, red_id = _project_endpoint(
+            project.redmine_url,
+            'redmine',
+        )
+
+        red = Api(
+            red_base,
+            {
+                'X-Redmine-API-Key': _token(
+                    project.redmine_token_encrypted,
+                ),
+            },
+        )
+
+        issues = red.pages(
+            '/issues.json',
+            {
+                'project_id': red_id,
+                'status_id': '*',
+            },
+        )
+
+        entries = red.pages(
+            '/time_entries.json',
+            {
+                'project_id': red_id,
+                'from': start.isoformat(),
+                'to': end.isoformat(),
+            },
+        )
+
+        sources['redmine'] = 'live'
+
+    return {
+        'commits': commits,
+        'issues': issues,
+        'entries': entries,
+        'period': {
+            'start': start.isoformat(),
+            'end': end.isoformat(),
+        },
+        'sources': sources,
+    }
 
 def sprint_dates(project, number, today=None):
     if not project.start_date:
