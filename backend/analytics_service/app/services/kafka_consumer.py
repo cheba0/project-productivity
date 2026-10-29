@@ -315,18 +315,38 @@ def save_time_entry_event(event):
 # ==========================================
 
 def process_event(event):
+    from analytics_service.app.services.metrics_service import (
+        calculate_project_metrics,
+    )
+
     event_type = event.get("event_type")
 
     if event_type == "gitlab.commit.created":
-        return save_commit_event(event)
+        result = save_commit_event(event)
+        source = "gitlab"
+    elif event_type == "redmine.issue.upserted":
+        result = save_issue_event(event)
+        source = "redmine"
+    elif event_type == "redmine.time_entry.upserted":
+        result = save_time_entry_event(event)
+        source = "redmine"
+    else:
+        return "skipped"
 
-    if event_type == "redmine.issue.upserted":
-        return save_issue_event(event)
+    if result in ("unmapped", "skipped"):
+        return result
 
-    if event_type == "redmine.time_entry.upserted":
-        return save_time_entry_event(event)
+    with SessionLocal() as db:
+        mapping = get_project_mapping(db, event, source)
 
-    return "skipped"
+        if mapping is None:
+            return "unmapped"
+
+        project_mapping_id = mapping.id
+
+    calculate_project_metrics(project_mapping_id)
+
+    return result
 
 
 # ==========================================

@@ -40,12 +40,12 @@ class ProjectMapping(Base):
 
     gitlab_connection_id: Mapped[UUID] = mapped_column(
         PG_UUID(as_uuid=True),
-        nullable=False,
+        nullable=True,
     )
 
     gitlab_project_id: Mapped[int] = mapped_column(
         BigInteger,
-        nullable=False,
+        nullable=True,
     )
 
     redmine_connection_id: Mapped[UUID] = mapped_column(

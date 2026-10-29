@@ -38,3 +38,11 @@ services:
     env_file: .env
     ports:
       - "127.0.0.1:8003:8000"
+
+  analytics_consumer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command: python -u -m analytics_service.app.services.kafka_consumer
+    env_file: .env
