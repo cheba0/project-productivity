@@ -1,0 +1,127 @@
+.page {
+  display: grid;
+  gap: 20px;
+  min-width: 0;
+}
+
+.header,
+.panelHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.header h1 {
+  margin: 0 0 8px;
+  overflow-wrap: anywhere;
+}
+
+.header p {
+  margin: 0;
+  color: #777;
+}
+
+.panel {
+  display: grid;
+  gap: 18px;
+  min-width: 0;
+  padding: 24px;
+  border: 1px solid #ddd;
+  border-radius: 14px;
+  background: #fff;
+}
+
+.panel h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.panel p {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.details,
+.metrics {
+  display: grid;
+  gap: 16px;
+  margin: 0;
+}
+
+.details > div {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px 20px;
+}
+
+.details dt,
+.metrics dt {
+  color: #777;
+}
+
+.details dd,
+.metrics dd {
+  margin: 0;
+}
+
+.metrics {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.metrics > div {
+  display: grid;
+  gap: 8px;
+  padding: 16px;
+  border-radius: 10px;
+  background: #f5f7f6;
+}
+
+.metrics dd {
+  font-size: 24px;
+  font-weight: 600;
+}
+
+.members {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.members li {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px;
+  overflow-wrap: anywhere;
+}
+
+.members span,
+.muted {
+  color: #777;
+}
+
+.error {
+  color: #b42318;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 800px) {
+  .metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 480px) {
+  .metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .panel {
+    padding: 18px;
+  }
+}

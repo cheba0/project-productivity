@@ -28,6 +28,16 @@ const demoMembers = [
   },
 ]
 
+function getInitials(name: string): string {
+  return name
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join('')
+    .toUpperCase()
+}
+
 export function ProjectSettingsPage() {
   const { projectId } = useParams<{ projectId: string }>()
   const location = useLocation()
@@ -80,122 +90,70 @@ export function ProjectSettingsPage() {
                   placeholder="https://showcase.tpu.ru/..."
                 />
               </label>
-            </section>
 
-            <section
-              className={`${styles.panel} ${styles.membersPanel}`}
-              aria-labelledby="members-title"
-            >
-              <div className={styles.panelHeading}>
-                <h2 id="members-title">
-                  Участники · {demoMembers.length}
-                </h2>
+              <div className={styles.dates}>
+                <span>Сроки проекта</span>
 
-                <button
-                    className={styles.addButton}
-                    type="button"
-                    onClick={() => setIsAddMemberOpen(true)}
-                >
-                    <Plus size={16} aria-hidden="true" />
-                    Добавить участника
-                </button>
+                <label className={styles.dateField}>
+                  <span>от</span>
+                  <input
+                    name="startDate"
+                    type="date"
+                    aria-label="Дата начала проекта"
+                  />
+                </label>
+
+                <label className={styles.dateField}>
+                  <span>до</span>
+                  <input
+                    name="deadline"
+                    type="date"
+                    aria-label="Дата завершения проекта"
+                  />
+                </label>
               </div>
 
-              <ul className={styles.members}>
-                {demoMembers.map((member) => (
-                  <li className={styles.member} key={member.id}>
-                    <span className={styles.avatar} aria-hidden="true" />
+              <label className={styles.pauseRow}>
+                <span>Поставить проект на паузу</span>
 
-                    <div className={styles.memberInfo}>
-                      <span className={styles.memberName}>
-                        {member.name}
-                      </span>
-                      <span className={styles.memberRole}>
-                        {member.role}
-                      </span>
-                    </div>
-
-                    <button
-                      className={styles.removeButton}
-                      type="button"
-                      disabled
-                      aria-label={`Удалить участника: ${member.name}`}
-                      title="Удаление участников пока недоступно"
-                    >
-                      <X size={20} aria-hidden="true" />
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          </div>
-
-          <div className={styles.column}>
-            <section
-              className={styles.panel}
-              aria-labelledby="integrations-title"
-            >
-              <h2 id="integrations-title">Интеграции</h2>
-
-              <div className={styles.integrations}>
-                <fieldset className={styles.integration}>
-                  <legend>GitLab</legend>
-
-                  <label className={styles.field}>
-                    <span>Ссылка</span>
-                    <input
-                      name="gitlabUrl"
-                      type="url"
-                      placeholder="https://gitlab.tpu.ru/..."
-                    />
-                  </label>
-
-                  <label className={styles.field}>
-                    <span>Токен</span>
-                    <input
-                      name="gitlabToken"
-                      type="password"
-                      placeholder="Введите токен"
-                      autoComplete="off"
-                    />
-                  </label>
-                </fieldset>
-
-                <fieldset className={styles.integration}>
-                  <legend>Redmine</legend>
-
-                  <label className={styles.field}>
-                    <span>Ссылка</span>
-                    <input
-                      name="redmineUrl"
-                      type="url"
-                      placeholder="https://redmine.tpu.ru/..."
-                    />
-                  </label>
-
-                  <label className={styles.field}>
-                    <span>Токен</span>
-                    <input
-                      name="redmineToken"
-                      type="password"
-                      placeholder="Введите токен"
-                      autoComplete="off"
-                    />
-                  </label>
-                </fieldset>
-              </div>
+                <input
+                  className={styles.switch}
+                  type="checkbox"
+                  role="switch"
+                  disabled
+                  title="Изменение состояния проекта пока не подключено"
+                />
+              </label>
             </section>
 
             <section
               className={`${styles.panel} ${styles.thresholdsPanel}`}
               aria-labelledby="thresholds-title"
             >
-              <h2 id="thresholds-title">Дни для статусов</h2>
+              <h2 id="thresholds-title">Спринты и статусы</h2>
+              <div className={styles.statusRow}>
+                <label htmlFor="settings-sprint-weeks">Длина спринта</label>
 
-              <p className={styles.hint}>
-                Дни без активности в GitLab и Redmine. Свои значения
-                для каждого проекта.
-              </p>
+                <div className={styles.threshold}>
+                  <input
+                    id="settings-sprint-weeks"
+                    name="sprintWeeks"
+                    type="number"
+                    min="1"
+                    max="12"
+                    step="1"
+                    defaultValue="1"
+                  />
+                  <span>нед.</span>
+                </div>
+              </div>
+
+              <p className={styles.hint}>По умолчанию — 1 неделя</p>
+
+              <h3 className={styles.subheading}>
+                Дни без активности в GitLab и Redmine
+              </h3>
+
 
               <div className={styles.statusRow}>
                 <label className={styles.statusLabel} htmlFor="active-days">
@@ -257,6 +215,116 @@ export function ProjectSettingsPage() {
                   более {warningDays || '—'} дн.
                 </span>
               </div>
+            </section>
+          </div>
+
+          <div className={styles.column}>
+            <section
+              className={styles.panel}
+              aria-labelledby="integrations-title"
+            >
+              <h2 id="integrations-title">Интеграции</h2>
+
+              <div className={styles.integrations}>
+                <fieldset className={styles.integration}>
+                  <legend>GitLab</legend>
+
+                  <label className={styles.field}>
+                    <span>Ссылка</span>
+                    <input
+                      name="gitlabUrl"
+                      type="url"
+                      placeholder="https://gitlab.tpu.ru/..."
+                    />
+                  </label>
+
+                  <label className={styles.field}>
+                    <span>Токен</span>
+                    <input
+                      name="gitlabToken"
+                      type="password"
+                      placeholder="Введите токен"
+                      autoComplete="off"
+                    />
+                  </label>
+                </fieldset>
+
+                <fieldset className={styles.integration}>
+                  <legend>Redmine</legend>
+
+                  <label className={styles.field}>
+                    <span>Ссылка</span>
+                    <input
+                      name="redmineUrl"
+                      type="url"
+                      placeholder="https://redmine.tpu.ru/..."
+                    />
+                  </label>
+
+                  <label className={styles.field}>
+                    <span>Токен</span>
+                    <input
+                      name="redmineToken"
+                      type="password"
+                      placeholder="Введите токен"
+                      autoComplete="off"
+                    />
+                  </label>
+                </fieldset>
+              </div>
+            </section>
+
+            <section
+              className={`${styles.panel} ${styles.membersPanel}`}
+              aria-labelledby="members-title"
+            >
+              <div className={styles.panelHeading}>
+                <h2 id="members-title">
+                  Участники · {demoMembers.length}
+                </h2>
+
+                <button
+                    className={styles.addButton}
+                    type="button"
+                    onClick={() => setIsAddMemberOpen(true)}
+                >
+                    <Plus size={16} aria-hidden="true" />
+                    Добавить участника
+                </button>
+              </div>
+
+              <ul className={styles.members}>
+                {demoMembers.map((member, index) => (
+                  <li className={styles.member} key={member.id}>
+                    <span
+                      className={styles.avatar}
+                      data-color={index % 4}
+                      aria-hidden="true"
+                    >
+                      {getInitials(member.name || '?')}
+                    </span>
+
+                    <div className={styles.memberInfo}>
+                      <span className={styles.memberName}>
+                        {member.name}
+                      </span>
+                      <span className={styles.memberRole}>
+                        {member.role}
+                      </span>
+                    </div>
+
+                    <button
+                      className={styles.removeButton}
+                      type="button"
+                      disabled
+                      aria-label={`Удалить участника: ${member.name}`}
+                      title="Удаление участников пока недоступно"
+                    >
+                      <X size={20} aria-hidden="true" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
             </section>
           </div>
         </div>

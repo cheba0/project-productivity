@@ -2,27 +2,56 @@ import {
   useEffect,
   useState,
   type PropsWithChildren,
-  type ReactNode,
 } from 'react'
 import { Header } from '../widgets/header'
 import { Sidebar } from '../widgets/sidebar'
 import { AppRoutes } from './router/AppRoutes'
 import styles from './App.module.css'
 import { useAuthStore } from '../store/authStore'
+import { StatusLegendDialog } from '../widgets/status-legend'
+import { SettingsDialog } from '../widgets/settings-dialog'
+
+type AppLayoutProps = PropsWithChildren<{
+  userName?: string
+  loggingOut: boolean
+  onLogout: () => void
+}>
 
 function AppLayout({
   children,
-  actions,
-}: PropsWithChildren<{ actions: ReactNode }>) {
+  userName,
+  loggingOut,
+  onLogout,
+}: AppLayoutProps) {
+  const [isStatusLegendOpen, setIsStatusLegendOpen] = useState(false)
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false)
+
   return (
     <div className={styles.layout}>
-      <Sidebar />
+      <Sidebar
+        userName={userName}
+        loggingOut={loggingOut}
+        onLogout={onLogout}
+        onOpenStatusLegend={() => setIsStatusLegendOpen(true)}
+        onOpenSettings={() => setIsSettingsOpen(true)}
+      />
+
       <div className={styles.body}>
-        <Header actions={actions} />
+        <Header />
+
         <main id="main-content" className={styles.content}>
           {children}
         </main>
       </div>
+
+      <StatusLegendDialog
+        open={isStatusLegendOpen}
+        onClose={() => setIsStatusLegendOpen(false)}
+      />
+      <SettingsDialog
+        open={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+      />
     </div>
   )
 }
@@ -59,28 +88,17 @@ export default function App() {
     void checkAuth()
   }
 
-  const actions = user ? (
-    <>
-      <span>{user.first_name}</span>
-
-      <button
-        type="button"
-        className="button"
-        disabled={loggingOut}
-        onClick={handleLogout}
-      >
-        {loggingOut ? 'Выходим…' : 'Выйти'}
-      </button>
-    </>
-  ) : null
-
   return (
     <>
       <a className="skip-link" href="#main-content">
         К содержимому
       </a>
 
-      <AppLayout actions={actions}>
+      <AppLayout
+        userName={user?.first_name}
+        loggingOut={loggingOut}
+        onLogout={() => void handleLogout()}
+      >
         {isLoading ? (
           <p role="status">Проверяем сессию и выполняем вход…</p>
         ) : error ? (
