@@ -241,8 +241,17 @@ def fetch(project, start: date, end: date):
         })
         # Merge requests are distinct from merge commits. Reuse the same
         # vetted GitLab endpoint and encrypted credential for both APIs.
-        merge_requests = git.pages(f'/projects/{git_id}/merge_requests',
-                                   {'state': 'all'})
+        raw_requests = git.pages(f'/projects/{git_id}/merge_requests',
+                                 {'state': 'all'})
+        # Persist only fields needed by the dashboard, not full descriptions,
+        # participant profiles, or other private upstream API metadata.
+        if not all(isinstance(row, dict) for row in raw_requests):
+            raise HTTPException(502, 'Unexpected GitLab MR response structure')
+        fields = ('iid', 'title', 'state', 'created_at', 'merged_at', 'web_url')
+        merge_requests = [
+            {field: row.get(field) for field in fields}
+            for row in raw_requests
+        ]
         sources['gitlab'] = 'live'
     if project.redmine_url and project.redmine_token_encrypted:
         red_base, red_id = _project_endpoint(project.redmine_url, 'redmine')
