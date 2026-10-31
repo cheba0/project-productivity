@@ -1,0 +1,24 @@
+services:
+  auth_service:
+    image: tpu-metrics-backend-candidate:1c6c5dc
+    build: !reset null
+
+  gitlab_service:
+    image: tpu-metrics-backend-candidate:1c6c5dc
+    build: !reset null
+
+  redmine_service:
+    image: tpu-metrics-backend-candidate:1c6c5dc
+    build: !reset null
+
+  analytics_service:
+    image: tpu-metrics-backend-candidate:1c6c5dc
+    build: !reset null
+
+  analytics_consumer:
+    image: tpu-metrics-backend-candidate:1c6c5dc
+    build: !reset null
+
+  project_sync_worker:
+    image: tpu-metrics-backend-candidate:1c6c5dc
+    build: !reset null
