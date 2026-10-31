@@ -16,6 +16,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from auth_service.app.live_metrics import compute, fetch
+from auth_service.app.services.analytics_store import fetch_analytics_data, has_analytics_mapping
 from auth_service.app.project_models import Project, ProjectActivity, ProjectMetricSnapshot
 
 log = logging.getLogger(__name__)
@@ -33,11 +34,17 @@ def source_hash(project: Project) -> str:
     return hashlib.sha256(json.dumps(values).encode("utf-8")).hexdigest()
 
 
-def configured(project: Project) -> bool:
+def has_provider_credentials(project: Project) -> bool:
     return bool(
         (project.gitlab_url and project.gitlab_token_encrypted)
         or (project.redmine_url and project.redmine_token_encrypted)
     )
+
+
+def configured(project: Project) -> bool:
+    # A previously ingested project can be read safely only by an exact
+    # workspace_id match; never infer identities from matching project names.
+    return has_provider_credentials(project) or has_analytics_mapping(project.workspace_id)
 
 
 def sync_status(db: Session, project: Project) -> dict:
@@ -132,7 +139,16 @@ def sync_project(db: Session, project: Project) -> dict:
         start = end - timedelta(days=MAX_HISTORY_DAYS)
         if project.start_date and start < project.start_date <= end:
             start = project.start_date
-        data = fetch(project, start, end)
+        if has_provider_credentials(project):
+            # New projects: fetch live GitLab/Redmine using encrypted
+            # per-project tokens, not legacy .env credentials.
+            data = fetch(project, start, end)
+        else:
+            # Pre-imported test data: analytics_db is the source of truth.
+            # This path never attempts to reach a localhost Redmine.
+            data = fetch_analytics_data(project.workspace_id, start, end)
+            if data is None:
+                raise HTTPException(409, "No analytics mapping for this workspace")
         result = compute(data, [], {}, start, end)
         summary = result["summary"]
         row = db.get(ProjectMetricSnapshot, project_id)
@@ -153,11 +169,11 @@ def sync_project(db: Session, project: Project) -> dict:
             db.add(activity)
         activity.last_gitlab_activity = summary["last_gitlab_activity"]
         activity.last_redmine_activity = summary["last_redmine_activity"]
-        activity.tasks_done = summary["tasks_done"] if data["sources"]["redmine"] == "live" else None
-        activity.tasks_total = summary["tasks_total"] if data["sources"]["redmine"] == "live" else None
+        activity.tasks_done = summary["tasks_done"] if data["sources"]["redmine"] in ("live", "database") else None
+        activity.tasks_total = summary["tasks_total"] if data["sources"]["redmine"] in ("live", "database") else None
         activity.commits_per_day = (
             [d["gitlab_commits"] for d in result["daily_activity"][-7:]]
-            if data["sources"]["gitlab"] == "live" else None
+            if data["sources"]["gitlab"] in ("live", "database") else None
         )
         db.commit()
         return sync_status(db, db.get(Project, project_id))
