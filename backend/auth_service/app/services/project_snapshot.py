@@ -43,10 +43,11 @@ def configured(project: Project) -> bool:
 def sync_status(db: Session, project: Project) -> dict:
     row = db.get(ProjectMetricSnapshot, project.id)
     valid = bool(row and row.payload is not None and row.source_hash == source_hash(project))
+    is_configured = configured(project)
     return {
         "project_id": str(project.id),
-        "configured": configured(project),
-        "state": ("not_configured" if not configured(project) else
+        "configured": is_configured,
+        "state": ("not_configured" if not is_configured else
                   "never_synced" if row is None else
                   "error" if row.last_error else
                   "ready" if valid else "needs_refresh"),
