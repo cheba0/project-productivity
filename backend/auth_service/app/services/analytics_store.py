@@ -111,7 +111,8 @@ def fetch_analytics_data(workspace_id, start: date, end: date) -> dict | None:
                     "status": {"name": t.status_name or "", "is_closed": bool(t.is_closed)},
                     "closed_on": iso(t.closed_at) if t.is_closed else None,
                     "updated_on": iso(t.closed_at) if t.is_closed else iso(t.created_at),
-                    "start_date": iso(t.created_at.date()) if t.created_at else None,
+                    "start_date": iso(t.start_date),
+                    "due_date": iso(t.due_date),
                     "estimated_hours": float(t.estimated_hours) if t.estimated_hours is not None else None,
                     "assigned_to": {"id": t.assignee_redmine_user_id}
                         if t.assignee_redmine_user_id is not None else None,

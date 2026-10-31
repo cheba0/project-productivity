@@ -156,6 +156,18 @@ def fetch(project, start: date, end: date):
         red_base, red_id = _project_endpoint(project.redmine_url, 'redmine')
         red = Api(red_base, {'X-Redmine-API-Key': _token(project.redmine_token_encrypted)})
         issues = red.pages('/issues.json', {'project_id': red_id, 'status_id': '*'})
+        # Status IDs are installation-specific; read official Redmine metadata.
+        statuses_payload = red.get('/issue_statuses.json')
+        statuses = statuses_payload.get('issue_statuses') if isinstance(statuses_payload, dict) else None
+        if not isinstance(statuses, list):
+            raise HTTPException(502, 'Invalid Redmine issue statuses response')
+        by_id = {str(row['id']): row for row in statuses
+                 if isinstance(row, dict) and row.get('id') is not None}
+        for issue in issues:
+            status = issue.get('status') or {}
+            meta = by_id.get(str(status.get('id')))
+            if meta is not None:
+                issue['status'] = {**status, 'is_closed': bool(meta.get('is_closed', False))}
         entries = red.pages('/time_entries.json', {'project_id': red_id,
                             'from': start.isoformat(), 'to': end.isoformat()})
         sources['redmine'] = 'live'
@@ -248,7 +260,9 @@ def compute(data, members, users, start, end, profiles=None, *,
         assigned = issue.get('assigned_to') or {}
         status = issue.get('status') or {}
         status_name = status.get('name') or ''
-        closed = bool(issue.get('closed_on')) or status_name.lower() in ('closed', 'закрыта', 'resolved', 'решена')
+        closed = (bool(issue.get('closed_on')) or
+                  (bool(status['is_closed']) if status.get('is_closed') is not None
+                   else status_name.lower() in ('closed', 'закрыта', 'resolved', 'решена')))
         tasks.append({'id': issue.get('id'), 'title': issue.get('subject'),
                       'status': status_name, 'done': closed,
                       'assigned_to': assigned.get('id'),
