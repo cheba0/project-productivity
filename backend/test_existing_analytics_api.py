@@ -84,6 +84,20 @@ try:
             assert body["summary"]["tasks_total"] == 6
             assert body["summary"]["commits"] == len(snapshot.payload["commits"])
             assert body["summary"]["redmine_time_entries"] == len(snapshot.payload["entries"])
+        sprint = client.get(f"/api/projects/{pid}/sprint-hours")
+        print("SPRINT HOURS HTTP:", sprint.status_code)
+        assert sprint.status_code == 200, sprint.text
+        assert sprint.json()["plan_basis"] == "task_start_date"
+        print("SPRINTS:", len(sprint.json()["items"]))
+
+        deadlines = client.get(f"/api/projects/{pid}/deadlines")
+        print("DEADLINES HTTP:", deadlines.status_code)
+        assert deadlines.status_code == 200, deadlines.text
+        # Normalized legacy analytics tasks do not store due_date.
+        assert deadlines.json()["available"] is False
+        assert deadlines.json()["reason"] == "no_due_dates_in_source"
+        print("DEADLINE DATA:", deadlines.json()["reason"])
+
         print("ALL EXISTING ANALYTICS API CHECKS PASSED")
 finally:
     app.dependency_overrides.pop(require_user, None)

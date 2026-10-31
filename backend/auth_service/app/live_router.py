@@ -13,7 +13,8 @@ from sqlalchemy.orm import Session
 
 from auth_service.app.database import get_db
 from auth_service.app.models import User
-from auth_service.app.project_models import ProjectMember
+from auth_service.app.project_models import ProjectMember, ProjectMetricSnapshot
+from auth_service.app.services.dashboard_extras import sprint_hours, upcoming_deadlines
 from auth_service.app.projects_router import require_user, load_project
 from auth_service.app.live_metrics import compute, sprint_dates, sprint_list
 from auth_service.app.services.project_snapshot import get_cached_data, sync_project, sync_status
@@ -64,12 +65,16 @@ def _profiles(db, members):
 def _dashboard(project, db, sprint, start, end):
     first, last = _period(project, sprint, start, end)
     members, users = _members(db, project)
-    return compute(
-        get_cached_data(db, project, first, last), members, users, first, last,
+    data = get_cached_data(db, project, first, last)
+    result = compute(
+        data, members, users, first, last,
         profiles=_profiles(db, members),
         active_after_days=project.active_after_days,
         delayed_after_days=project.delayed_after_days,
     )
+    result['sprint_hours'] = sprint_hours(data, project, first, last)
+    result['upcoming_deadlines'] = upcoming_deadlines(data)
+    return result
 
 
 @router.get('/{project_id}/sprints')
@@ -103,6 +108,44 @@ def get_planning_quality(project_id: UUID, sprint: int | None = Query(None, ge=1
     project = load_project(db, project_id, user)
     result = _dashboard(project, db, sprint, start, end)
     return {'period': result['period'], **result['planning_quality'], 'sources': result['sources']}
+
+
+def _snapshot_window(db, project, start, end):
+    if bool(start) != bool(end):
+        raise HTTPException(422, 'Both start and end required')
+    snapshot = db.get(ProjectMetricSnapshot, project.id)
+    if not snapshot or not snapshot.period_start or not snapshot.period_end:
+        raise HTTPException(409, 'No metrics snapshot; sync this project first')
+    first = start or snapshot.period_start
+    last = end or snapshot.period_end
+    return get_cached_data(db, project, first, last), first, last
+
+
+@router.get('/{project_id}/sprint-hours')
+def get_sprint_hours(project_id: UUID, start: date | None = None,
+                     end: date | None = None,
+                     db: Session = Depends(get_db),
+                     user: User = Depends(require_user)):
+    """Full cached window by default, rather than only the current sprint."""
+    project = load_project(db, project_id, user)
+    data, first, last = _snapshot_window(db, project, start, end)
+    return {
+        'period': {'start': first.isoformat(), 'end': last.isoformat()},
+        'sources': data['sources'],
+        **sprint_hours(data, project, first, last),
+    }
+
+
+@router.get('/{project_id}/deadlines')
+def get_deadlines(project_id: UUID, days: int = Query(14, ge=1, le=365),
+                  limit: int = Query(25, ge=1, le=100),
+                  db: Session = Depends(get_db),
+                  user: User = Depends(require_user)):
+    """Current deadlines from the last successful PostgreSQL snapshot."""
+    project = load_project(db, project_id, user)
+    data, _, _ = _snapshot_window(db, project, None, None)
+    return {'sources': data['sources'],
+            **upcoming_deadlines(data, days=days, limit=limit)}
 
 
 def _member(db, project, member_id):
