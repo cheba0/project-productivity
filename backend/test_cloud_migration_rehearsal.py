@@ -30,6 +30,25 @@ class CloudMigrationSafetyTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             check.target_url(61001, "synthetic", "auth_db")
 
+    def test_readiness_targets_existing_default_postgres_db(self):
+        # Regression: attempting to connect to restore_auth before created
+        # always timed out; the maintenance DB exists immediately at startup.
+        url = make_url(check.postgres_readiness_url(61001, "synthetic"))
+        self.assertEqual((url.host, url.port, url.database, url.username),
+                         ("127.0.0.1", 61001, "postgres", "postgres"))
+        self.assertNotEqual(url.database, "restore_auth")
+        with self.assertRaisesRegex(RuntimeError, "Invalid isolated"):
+            check.postgres_readiness_url(0, "synthetic")
+
+    def test_readiness_succeeds_with_maintenance_db(self):
+        with patch.object(check, "create_engine") as engine:
+            check.wait_for_postgres(61001, "synthetic")
+        called = make_url(engine.call_args.args[0])
+        self.assertEqual(called.database, "postgres")
+        self.assertEqual(called.host, "127.0.0.1")
+        engine.return_value.connect.assert_called_once()
+        engine.return_value.dispose.assert_called_once()
+
     def test_modification_of_existing_rows_fails(self):
         before = ("e82c91a4f703", {"alembic_version": 1, "analytics_tasks": 4},
                   {"analytics_tasks": {"id"}})

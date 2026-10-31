@@ -39,6 +39,12 @@ constructed in the script with host `127.0.0.1`, random local port,
 synthetic temporary password, and `restore_*` DB names, and override
 any Windows `.env` values. No production SSH or cloud API is used.
 
+Startup readiness explicitly connects to PostgreSQL's built-in
+`postgres` maintenance database before creating any `restore_*` database.
+This fixes an initial dry run that incorrectly checked `restore_auth`
+before it existed and timed out. The aborted run removed its ephemeral
+container; no migration was executed and no production data was changed.
+
 It restores the auth, analytics, redmine and GitLab server backups
 into brand-new databases. Using feature-branch Alembic code, upgrades
 **only** auth/analytics/redmine to their planned revisions. Then checks:

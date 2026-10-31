@@ -65,6 +65,37 @@ def target_url(port, password, database):
     return url
 
 
+def postgres_readiness_url(port, password):
+    """Use the existing default maintenance DB, NOT a not-yet-created restore DB."""
+    if not isinstance(port, int) or not 1 <= port <= 65535:
+        raise RuntimeError("Invalid isolated local PostgreSQL port")
+    return URL.create(
+        "postgresql+psycopg2", username="postgres", password=password,
+        host="127.0.0.1", port=port, database="postgres",
+    )
+
+
+def wait_for_postgres(port, password):
+    """Prove localhost host-port connectivity before creating restored databases."""
+    from sqlalchemy.exc import OperationalError
+
+    url = postgres_readiness_url(port, password)
+    for _ in range(50):
+        engine = create_engine(
+            url, pool_pre_ping=True, connect_args={"connect_timeout": 2},
+        )
+        try:
+            with engine.connect() as connection:
+                connection.execute(text("SELECT 1"))
+            print("POSTGRES READY: default postgres database", flush=True)
+            return
+        except OperationalError:
+            time.sleep(1)
+        finally:
+            engine.dispose()
+    raise RuntimeError("Local temporary PostgreSQL did not become ready")
+
+
 def snapshot(url):
     """Inspect this RESTORED DB: exact row counts, columns and revision."""
     engine = create_engine(url, pool_pre_ping=True, connect_args={"connect_timeout": 5})
@@ -193,22 +224,7 @@ def main():
         ], "Start isolated local PostgreSQL", timeout=60)
         started = True
         print("EPHEMERAL POSTGRES: 127.0.0.1 LOOPBACK ONLY; RANDOM PORT", flush=True)
-        for _ in range(50):
-            try:
-                engine = create_engine(
-                    target_url(port, password, "restore_auth"),
-                    connect_args={"connect_timeout": 2},
-                )
-                try:
-                    with engine.connect() as conn:
-                        conn.execute(text("SELECT 1"))
-                    break
-                finally:
-                    engine.dispose()
-            except Exception:
-                time.sleep(1)
-        else:
-            raise RuntimeError("Local temporary PostgreSQL did not become ready")
+        wait_for_postgres(port, password)
         for role, (filename, db, before_rev, _, _, _) in MIGRATIONS.items():
             restore_into(name, filename, db)
             url = target_url(port, password, db)
