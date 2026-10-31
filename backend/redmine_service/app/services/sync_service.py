@@ -33,10 +33,11 @@ def parse_datetime(value):
 def parse_decimal(value):
     if value is None:
         return None
+    return Decimal(str(value)).quantize(Decimal("0.01"))
 
-    return Decimal(str(value)).quantize(
-        Decimal("0.01")
-    )
+
+def parse_date(value):
+    return date.fromisoformat(str(value)[:10]) if value else None
 
 
 
@@ -225,7 +226,8 @@ def sync_redmine(
             db.flush()
             status_map[item["id"]] = status.id
 
-        # 6. Сохраняем задачи.
+        # 6. Сохраняем задачи. Redmine status IDs are installation-specific.
+        status_details = {status["id"]: status for status in statuses}
         issue_map = {}
 
         for item in issues:
@@ -296,6 +298,8 @@ def sync_redmine(
                         "done_ratio",
                         0,
                     ),
+                    start_date=parse_date(item.get("start_date")),
+                    due_date=parse_date(item.get("due_date")),
                     created_at=parse_datetime(
                         item.get("created_on")
                     ),
@@ -339,6 +343,8 @@ def sync_redmine(
                     "done_ratio",
                     0,
                 )
+                issue.start_date = parse_date(item.get("start_date"))
+                issue.due_date = parse_date(item.get("due_date"))
 
                 issue.created_at = parse_datetime(
                     item.get("created_on")
@@ -361,6 +367,10 @@ def sync_redmine(
                     "project_id": external_project_id,
                     "assignee_external_id": assignee_data.get("id"),
                     "status_external_id": status_data.get("id"),
+                    "status_name": status_details[status_data["id"]]["name"],
+                    "status_is_closed": bool(status_details[status_data["id"]].get("is_closed", False)),
+                    "start_date": issue.start_date.isoformat() if issue.start_date else None,
+                    "due_date": issue.due_date.isoformat() if issue.due_date else None,
                     "subject": issue.subject,
                     "description": issue.description,
                     "priority_name": issue.priority_name,

@@ -224,6 +224,9 @@ class AnalyticsTask(Base):
         Numeric(12, 2)
     )
 
+    start_date: Mapped[date | None] = mapped_column(Date)
+    due_date: Mapped[date | None] = mapped_column(Date)
+
     created_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True)
     )

@@ -140,6 +140,8 @@ class RedmineIssue(Base):
     estimated_hours: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
     spent_hours: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
     done_ratio: Mapped[int] = mapped_column(Integer, default=0)
+    start_date: Mapped[date | None] = mapped_column(Date)
+    due_date: Mapped[date | None] = mapped_column(Date)
     created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

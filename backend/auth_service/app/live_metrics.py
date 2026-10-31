@@ -45,14 +45,73 @@ def _host_is_public(host):
         return False
 
 
+def _resolve_public_ip(host):
+    """Resolve for THIS request and allow only globally routable addresses.
+
+    The selected address is then used as the HTTPS socket destination, so
+    HTTPX cannot independently re-resolve the hostname to a private IP.
+    """
+    try:
+        records = socket.getaddrinfo(host, 443, type=socket.SOCK_STREAM)
+        addresses = {ipaddress.ip_address(item[4][0]) for item in records}
+    except (OSError, ValueError, IndexError, TypeError):
+        raise HTTPException(502, 'Integration DNS lookup failed') from None
+    if not addresses or not all(address.is_global for address in addresses):
+        raise HTTPException(502, 'Integration DNS includes a non-public address')
+    # Prefer IPv4 when available; each address must already be public.
+    selected = min(addresses, key=lambda a: (a.version != 4, str(a)))
+    return str(selected)
+
+
 def _project_endpoint(url, service):
-    parsed = urlparse(url or '')
-    if parsed.scheme != 'https' or not parsed.hostname or parsed.username or parsed.password or parsed.port not in (None, 443):
+    """Allow only administrator-approved public HTTPS API destinations.
+
+    URL ownership is established by exact hostname matches, not by matching
+    domain suffixes or by accepting arbitrary publicly resolved hosts.
+    The HTTPS requester separately pins each connection to its validated IP.
+    An egress firewall is still required as defense in depth.
+    """
+    try:
+        parsed = urlparse(url or '')
+        port = parsed.port
+    except ValueError:
+        raise HTTPException(422, f'{service}_url is malformed') from None
+
+    if (parsed.scheme != 'https' or not parsed.hostname
+            or parsed.username or parsed.password or port not in (None, 443)
+            or parsed.params or parsed.query or parsed.fragment
+            or '\\' in (url or '')):
         raise HTTPException(422, f'{service}_url must be a public HTTPS project URL')
-    # На сервере для внутренних корпоративных API можно явно разрешить домены.
-    allowed = {s.strip().lower() for s in os.getenv('PROJECT_API_ALLOWED_HOSTS', '').split(',') if s.strip()}
-    if parsed.hostname.lower() not in allowed and not _host_is_public(parsed.hostname):
+
+    host = parsed.hostname.lower()
+    # Even operator allowlists may not authorize local, literal-IP or
+    # single-label endpoints. Do not use the user's URL as an egress bypass.
+    if (host.endswith('.') or '.' not in host
+            or host.endswith(('.localhost', '.local', '.internal', '.test'))
+            or host in ('localhost', 'localhost.localdomain')):
         raise HTTPException(422, f'{service}_url host is not allowed')
+    try:
+        ipaddress.ip_address(host)
+    except ValueError:
+        pass
+    else:
+        raise HTTPException(422, f'{service}_url IP literals are not allowed')
+
+    allowed = {
+        value.strip().lower()
+        for value in os.getenv('PROJECT_API_ALLOWED_HOSTS', '').split(',')
+        if value.strip()
+    }
+    # Public GitLab SaaS is an explicit built-in trusted provider.
+    if service == 'gitlab':
+        allowed.add('gitlab.com')
+    if host not in allowed:
+        raise HTTPException(422, f'{service}_url host is not in the trusted allowlist')
+    # Fast rejection for invalid hosts during URL validation; the outgoing
+    # HTTP client independently pins its actual connection to a safe public IP.
+    if not _host_is_public(host):
+        raise HTTPException(422, f'{service}_url host must resolve only to public IPs')
+
     path = parsed.path.rstrip('/')
     if service == 'gitlab':
         if '/-/' in path:
@@ -60,13 +119,32 @@ def _project_endpoint(url, service):
         path = path.removesuffix('.git')
         if not path.strip('/'):
             raise HTTPException(422, 'GitLab project path missing')
-        # Поддерживает GitLab, установленный в подпапке: API base задаётся отдельно.
         api_base = os.getenv('PROJECT_GITLAB_API_BASE')
         if api_base:
+            try:
+                configured = urlparse(api_base)
+                api_port = configured.port
+            except ValueError:
+                raise HTTPException(422, 'Invalid PROJECT_GITLAB_API_BASE') from None
+            segments = configured.path.split('/')
+            if (configured.scheme != 'https'
+                    or configured.hostname != parsed.hostname
+                    or configured.username or configured.password
+                    or api_port not in (None, 443)
+                    or configured.query or configured.fragment or configured.params
+                    or not configured.path.rstrip('/').endswith('/api/v4')
+                    or '..' in segments or '.' in segments
+                    or '\\' in api_base):
+                raise HTTPException(
+                    422, 'PROJECT_GITLAB_API_BASE must be HTTPS on the GitLab project host'
+                )
             base = api_base.rstrip('/')
         else:
             base = f'{parsed.scheme}://{parsed.netloc}/api/v4'
         return base, quote(path.lstrip('/'), safe='')
+
+    if service != 'redmine':
+        raise HTTPException(422, 'Unknown integration service')
     if '/projects/' not in path:
         raise HTTPException(422, 'Redmine URL must contain /projects/{identifier}')
     root, identifier = path.rsplit('/projects/', 1)
@@ -94,10 +172,24 @@ class Api:
         self.headers = headers
 
     def get(self, path, params=None):
-        # follow_redirects=False: токены никогда не пересылаются на redirect-хост.
+        # Resolve and verify every public IP immediately before the request.
+        # Connect directly to the validated IP, keeping original Host and TLS
+        # SNI/certificate hostname. This closes the DNS-check/connect race.
+        target = httpx.URL(self.base + path)
+        original_host = target.host
+        if not original_host or target.scheme != 'https':
+            raise HTTPException(502, 'Invalid integration API endpoint')
+        pinned_ip = _resolve_public_ip(original_host)
+        pinned_url = str(target.copy_with(host=pinned_ip))
+        original_host_header = urlparse(self.base).netloc
+        headers = dict(self.headers)
+        headers['Host'] = original_host_header
         try:
             with httpx.Client(timeout=12.0, follow_redirects=False, trust_env=False) as client:
-                response = client.get(self.base + path, params=params, headers=self.headers)
+                response = client.get(
+                    pinned_url, params=params, headers=headers,
+                    extensions={'sni_hostname': original_host},
+                )
             if response.status_code in (401, 403):
                 raise HTTPException(502, 'Integration API rejected credentials or permissions')
             if response.status_code >= 300:
@@ -134,26 +226,58 @@ def fetch(project, start: date, end: date):
         raise HTTPException(422, 'start must be <= end')
     if (end - start).days > 366:
         raise HTTPException(422, 'Maximum period is 366 days')
-    if not project.gitlab_url or not project.redmine_url:
-        raise HTTPException(409, 'Both GitLab and Redmine project URLs are required')
-    git_base, git_id = _project_endpoint(project.gitlab_url, 'gitlab')
-    red_base, red_id = _project_endpoint(project.redmine_url, 'redmine')
-    git = Api(git_base, {'PRIVATE-TOKEN': _token(project.gitlab_token_encrypted)})
-    red = Api(red_base, {'X-Redmine-API-Key': _token(project.redmine_token_encrypted)})
-    # GitLab commits: дата коммита (не push), все страницы за период.
-    commits = git.pages(f'/projects/{git_id}/repository/commits', {
-        'since': start.isoformat() + 'T00:00:00Z',
-        'until': end.isoformat() + 'T23:59:59Z', 'all': 'true',
-    })
-    # Redmine issues: полный список, включая закрытые. Общее число задач не ограничено
-    # выбранным периодом, фильтрация по спринту выполняется по датам задач.
-    issues = red.pages('/issues.json', {'project_id': red_id, 'status_id': '*'})
-    entries = red.pages('/time_entries.json', {'project_id': red_id,
-                        'from': start.isoformat(), 'to': end.isoformat()})
-    return {'commits': commits, 'issues': issues, 'entries': entries,
-            'period': {'start': start.isoformat(), 'end': end.isoformat()},
-            'sources': {'gitlab': 'live', 'redmine': 'live'}}
 
+    if not (project.gitlab_url and project.gitlab_token_encrypted) and not (project.redmine_url and project.redmine_token_encrypted):
+        raise HTTPException(409, 'At least one integration URL and token required')
+    commits, issues, entries = [], [], []
+    merge_requests = None  # None: unavailable; []: checked, zero MRs.
+    sources = {'gitlab': 'not_configured', 'redmine': 'not_configured'}
+    if project.gitlab_url and project.gitlab_token_encrypted:
+        git_base, git_id = _project_endpoint(project.gitlab_url, 'gitlab')
+        git = Api(git_base, {'PRIVATE-TOKEN': _token(project.gitlab_token_encrypted)})
+        commits = git.pages(f'/projects/{git_id}/repository/commits', {
+            'since': start.isoformat() + 'T00:00:00Z',
+            'until': end.isoformat() + 'T23:59:59Z', 'all': 'true',
+        })
+        # Merge requests are distinct from merge commits. Reuse the same
+        # vetted GitLab endpoint and encrypted credential for both APIs.
+        raw_requests = git.pages(f'/projects/{git_id}/merge_requests',
+                                 {'state': 'all'})
+        # Persist only fields needed by the dashboard, not full descriptions,
+        # participant profiles, or other private upstream API metadata.
+        if not all(isinstance(row, dict) for row in raw_requests):
+            raise HTTPException(502, 'Unexpected GitLab MR response structure')
+        fields = ('iid', 'title', 'state', 'created_at', 'merged_at', 'web_url')
+        merge_requests = [
+            {field: row.get(field) for field in fields}
+            for row in raw_requests
+        ]
+        sources['gitlab'] = 'live'
+    if project.redmine_url and project.redmine_token_encrypted:
+        red_base, red_id = _project_endpoint(project.redmine_url, 'redmine')
+        red = Api(red_base, {'X-Redmine-API-Key': _token(project.redmine_token_encrypted)})
+        issues = red.pages('/issues.json', {'project_id': red_id, 'status_id': '*'})
+        # Status IDs are installation-specific; read official Redmine metadata.
+        statuses_payload = red.get('/issue_statuses.json')
+        statuses = statuses_payload.get('issue_statuses') if isinstance(statuses_payload, dict) else None
+        if not isinstance(statuses, list):
+            raise HTTPException(502, 'Invalid Redmine issue statuses response')
+        by_id = {str(row['id']): row for row in statuses
+                 if isinstance(row, dict) and row.get('id') is not None}
+        for issue in issues:
+            status = issue.get('status') or {}
+            meta = by_id.get(str(status.get('id')))
+            if meta is not None:
+                issue['status'] = {**status, 'is_closed': bool(meta.get('is_closed', False))}
+        entries = red.pages('/time_entries.json', {'project_id': red_id,
+                            'from': start.isoformat(), 'to': end.isoformat()})
+        sources['redmine'] = 'live'
+    result = {'commits': commits, 'issues': issues, 'entries': entries,
+              'period': {'start': start.isoformat(), 'end': end.isoformat()},
+              'sources': sources}
+    if merge_requests is not None:
+        result['merge_requests'] = merge_requests
+    return result
 
 def sprint_dates(project, number, today=None):
     if not project.start_date:
@@ -193,13 +317,21 @@ def _hours(value):
     return round(float(value or 0), 2)
 
 
-def compute(data, members, users, start, end):
+def compute(data, members, users, start, end, profiles=None, *,
+            active_after_days=3, delayed_after_days=7, as_of=None):
     """Нормализованный ответ для всех экранов, исключительно из upstream JSON.
 
     Redmine spent_on/time_entries — фактические часы; estimated_hours — план.
     Нет данных об оценке -> planned_hours=null, а не 0.
     """
     commits, issues, entries = data['commits'], data['issues'], data['entries']
+    # Historic Analytics has commits but no MR records: return unknown, not 0.
+    mr_available = 'merge_requests' in data
+    merge_requests = data.get('merge_requests') or []
+    mr_created = (sum(bool(d := _date(mr.get('created_at'))) and start <= d <= end
+                      for mr in merge_requests) if mr_available else None)
+    mr_merged = (sum(bool(d := _date(mr.get('merged_at'))) and start <= d <= end
+                     for mr in merge_requests) if mr_available else None)
     days = defaultdict(lambda: {'gitlab_commits': 0, 'redmine_updates': 0, 'redmine_hours': 0.0})
     git_by_email = defaultdict(list)
     git_by_name = defaultdict(list)
@@ -239,7 +371,9 @@ def compute(data, members, users, start, end):
         assigned = issue.get('assigned_to') or {}
         status = issue.get('status') or {}
         status_name = status.get('name') or ''
-        closed = bool(issue.get('closed_on')) or status_name.lower() in ('closed', 'закрыта', 'resolved', 'решена')
+        closed = (bool(issue.get('closed_on')) or
+                  (bool(status['is_closed']) if status.get('is_closed') is not None
+                   else status_name.lower() in ('closed', 'закрыта', 'resolved', 'решена')))
         tasks.append({'id': issue.get('id'), 'title': issue.get('subject'),
                       'status': status_name, 'done': closed,
                       'assigned_to': assigned.get('id'),
@@ -249,7 +383,9 @@ def compute(data, members, users, start, end):
     total = len(tasks)
     done = sum(t['done'] for t in tasks)
     total_planned = sum(_hours(t['estimated_hours']) for t in tasks if t['estimated_hours'] is not None)
-    total_actual = sum(_hours(t['spent_hours']) for t in tasks)
+    # Count all time entries, including entries without an associated issue.
+    # Task-level spent_hours above intentionally stays issue-linked.
+    total_actual = sum(_hours(e.get('hours')) for e in entries)
     estimated_count = sum(t['estimated_hours'] is not None for t in tasks)
     quality = {'normal': 0, 'warning': 0, 'error': 0, 'unplanned': 0}
     for task in tasks:
@@ -259,29 +395,94 @@ def compute(data, members, users, start, end):
         else:
             deviation = (task['spent_hours'] - float(estimate)) / float(estimate)
             quality['normal' if deviation <= 0.1 else 'warning' if deviation <= 0.2 else 'error'] += 1
-    last_git = max((_parse_dt(c.get('committed_date') or c.get('created_at')) for c in commits), default=None)
-    last_red = max((_parse_dt(i.get('updated_on')) for i in issues), default=None)
-    if last_red is None:
-        last_red = max((_parse_dt(e.get('created_on')) for e in entries), default=None)
+    # Ignore missing timestamps rather than comparing None with datetime.
+    last_git = max((dt for c in commits
+                    if (dt := _parse_dt(c.get('committed_date') or c.get('created_at')))), default=None)
+    last_red = max((
+        [dt for i in issues if (dt := _parse_dt(i.get('updated_on')))]
+        + [dt for e in entries
+           if (dt := _parse_dt(e.get('created_on') or e.get('spent_on')))]
+    ), default=None)
+
+    profiles = profiles or {}
+    today = (as_of or datetime.now(timezone.utc)).date()
+
+    def inactivity(last):
+        return max(0, (today - last.date()).days) if last else None
+
+    def tier(days):
+        if days is None:
+            return None
+        return ('working' if days <= active_after_days else
+                'delayed' if days <= delayed_after_days else 'idle')
+
     students = []
     for member in members:
         user = users.get(member.user_id)
+        profile = profiles.get(member.id)
         name = user.name if user else None
         email = member.email.strip().lower()
-        matched = git_by_email.get(email, [])
-        # Не связываем по совпадению имени: могут быть тёзки.
-        red_id = None  # Связь с Redmine user_id должна быть указана отдельно.
-        students.append({'member_id': str(member.id), 'name': name, 'email': email,
-                         'role': member.role, 'gitlab_commits': len(matched),
-                         'redmine_user_id': red_id,
-                         'redmine_hours': None, 'planned_hours': None,
-                         'activity_at': max((_parse_dt(c.get('committed_date')) for c in matched), default=None)})
+        # Email must be explicitly stored in the profile or match the
+        # authenticated TPU member email; never join users by display name.
+        git_email = ((getattr(profile, 'gitlab_email', None) or email)
+                     .strip().lower())
+        matched = git_by_email.get(git_email, [])
+        git_last = max(
+            (dt for c in matched
+             if (dt := _parse_dt(c.get('committed_date') or c.get('created_at')))),
+            default=None,
+        )
+        red_id = getattr(profile, 'redmine_user_id', None)
+        red_entries = red_by_id.get(str(red_id), []) if red_id is not None else []
+        assigned = ([t for t in tasks if str(t['assigned_to']) == str(red_id)]
+                    if red_id is not None else [])
+        plan_values = [float(t['estimated_hours']) for t in assigned
+                       if t['estimated_hours'] is not None]
+        planned = round(sum(plan_values), 2) if plan_values else None
+        actual = (round(sum(_hours(e.get('hours')) for e in red_entries), 2)
+                  if red_id is not None else None)
+        red_last = max(
+            (dt for e in red_entries
+             if (dt := _parse_dt(e.get('created_on') or e.get('spent_on')))),
+            default=None,
+        )
+        git_days, red_days = inactivity(git_last), inactivity(red_last)
+        known_tiers = [v for v in (tier(git_days), tier(red_days)) if v]
+        activity_status = (
+            'unknown' if not known_tiers else
+            'partial' if len(set(known_tiers)) > 1 else
+            known_tiers[0]
+        )
+        students.append({
+            'member_id': str(member.id), 'name': name, 'email': email,
+            'role': member.role, 'gitlab_commits': len(matched),
+            'redmine_user_id': red_id,
+            'redmine_entries': len(red_entries) if red_id is not None else None,
+            'redmine_hours': actual, 'actual_hours': actual,
+            'planned_hours': planned,
+            'hours_deviation': round(actual - planned, 2)
+                if actual is not None and planned is not None else None,
+            'hours_deviation_percent': round((actual - planned) / planned * 100, 1)
+                if actual is not None and planned is not None and planned > 0 else None,
+            'tasks_total': len(assigned) if red_id is not None else None,
+            'tasks_done': sum(t['done'] for t in assigned) if red_id is not None else None,
+            'tasks_in_progress': sum(not t['done'] for t in assigned)
+                if red_id is not None else None,
+            'last_gitlab_activity': git_last,
+            'last_redmine_activity': red_last,
+            'gitlab_inactive_days': git_days,
+            'redmine_inactive_days': red_days,
+            'activity_status': activity_status,
+            'activity_at': max((v for v in (git_last, red_last) if v), default=None),
+        })
     return {
         'period': data['period'], 'sources': data['sources'],
         'summary': {'tasks_total': total, 'tasks_done': done, 'tasks_in_progress': total - done,
                     'progress_percent': round(done / total * 100) if total else None,
                     'commits': sum(x['gitlab_commits'] for x in days.values()),
                     'redmine_time_entries': len(entries),
+                    'merge_requests_created': mr_created,
+                    'merge_requests_merged': mr_merged,
                     'actual_hours': round(total_actual, 2),
                     'planned_hours': round(total_planned, 2) if estimated_count else None,
                     'last_gitlab_activity': last_git, 'last_redmine_activity': last_red},
