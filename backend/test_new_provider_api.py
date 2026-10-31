@@ -50,7 +50,7 @@ def fake_get(api, path, params=None):
     raise AssertionError("Unexpected provider URL")
 
 with patch.dict(os.environ, {"PROJECT_TOKEN_ENCRYPTION_KEY": key,
-                             "PROJECT_API_ALLOWED_HOSTS": ""}):
+                             "PROJECT_API_ALLOWED_HOSTS": "redmine.example.org"}):
     with SessionLocal() as db:
         user = User(tpu_subject="url-test-"+uuid4().hex, name="URL Test",
                     email="url-test@example.org")

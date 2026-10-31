@@ -9,10 +9,24 @@ analytics_db records are a separate, legacy read-only source.
 
 - URL examples: `https://gitlab.com/group/repo` and
   `https://redmine.example.org/projects/project-identifier`.
-- The backend requires HTTPS and rejects arbitrary localhost/private hosts.
-  An operator may explicitly configure trusted integration hosts via
-  `PROJECT_API_ALLOWED_HOSTS` after validating ownership and networking;
-  do **not** whitelist untrusted localhost/private-network services.
+- The backend requires HTTPS, resolves hosts to **public** addresses,
+  and rejects arbitrary localhost/private/IP-literal hosts. It now requires
+  **exact, operator-approved hostname matches** in
+  `PROJECT_API_ALLOWED_HOSTS` for custom GitLab and Redmine servers.
+  The built-in public GitLab SaaS hostname `gitlab.com` is approved by
+  default. Arbitrary public DNS names are **not** automatically trusted.
+  To allow a Redmine server, set e.g.
+  `PROJECT_API_ALLOWED_HOSTS=redmine.example.org` in the **deployment**
+  environment after checking that this is an actual trusted public service.
+  This is not the same as migrating the developer's local Redmine.
+- `PROJECT_GITLAB_API_BASE` for nonstandard GitLab installations, if used,
+  must have the **same HTTPS hostname** as the project URL. The previously
+  possible arbitrary cross-host override is now rejected, protecting the
+  GitLab token from being sent to an unrelated endpoint.
+- DNS validation before making the request does **not** pin the IP address
+  for the subsequent HTTPS connection. DNS-rebinding/TOCTOU remains possible
+  without a network egress/proxy enforcement layer. Do not mark Cloud.ru
+  production ready based on URL validation alone.
 - `PROJECT_TOKEN_ENCRYPTION_KEY` must be a stable Fernet key, configured
   outside Git; otherwise new project tokens cannot be encrypted/decrypted.
 - A connection must be reachable **from Cloud.ru**, not merely from a

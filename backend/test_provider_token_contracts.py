@@ -64,7 +64,7 @@ class ProviderContracts(unittest.TestCase):
             return SimpleNamespace(status_code=200, json=lambda: content)
 
         with patch.dict(os.environ, {"PROJECT_TOKEN_ENCRYPTION_KEY": key,
-                                     "PROJECT_API_ALLOWED_HOSTS": ""}), \
+                                     "PROJECT_API_ALLOWED_HOSTS": "redmine.example.org"}), \
              patch("auth_service.app.live_metrics._host_is_public", return_value=True), \
              patch("auth_service.app.live_metrics.httpx.Client") as http_client:
             http_client.return_value.__enter__.return_value.get.side_effect = fake_get
@@ -101,6 +101,67 @@ class ProviderContracts(unittest.TestCase):
                 with self.subTest(url=url):
                     with self.assertRaises(HTTPException):
                         _project_endpoint(url, service)
+
+
+    def test_strict_allowlist_rejects_public_unapproved_hosts(self):
+        # DNS being public is NOT sufficient. A configured allowlist is required.
+        with patch.dict(os.environ, {
+            "PROJECT_API_ALLOWED_HOSTS": "redmine.example.org",
+            "PROJECT_GITLAB_API_BASE": "",
+        }), patch("auth_service.app.live_metrics._host_is_public", return_value=True):
+            for url, service in [
+                ("https://redmine.other-example.org/projects/demo", "redmine"),
+                ("https://redmine.example.org.evil.net/projects/demo", "redmine"),
+                ("https://gitlab.other-example.org/group/repo", "gitlab"),
+                ("https://localhost/projects/demo", "redmine"),
+                ("https://127.0.0.1/projects/demo", "redmine"),
+                ("https://8.8.8.8/projects/demo", "redmine"),
+                ("https://redmine.example.org:444/projects/demo", "redmine"),
+                ("https://redmine.example.org/projects/demo?x=1", "redmine"),
+                ("https://redmine.example.org/projects/demo#fragment", "redmine"),
+            ]:
+                with self.subTest(url=url):
+                    with self.assertRaises(HTTPException) as ctx:
+                        _project_endpoint(url, service)
+                    self.assertEqual(ctx.exception.status_code, 422)
+
+    def test_allowlisted_host_must_resolve_public_only(self):
+        with patch.dict(os.environ, {
+            "PROJECT_API_ALLOWED_HOSTS": "redmine.example.org",
+            "PROJECT_GITLAB_API_BASE": "",
+        }), patch("auth_service.app.live_metrics._host_is_public", return_value=False):
+            with self.assertRaises(HTTPException) as ctx:
+                _project_endpoint("https://redmine.example.org/projects/demo", "redmine")
+            self.assertEqual(ctx.exception.status_code, 422)
+
+    def test_gitlab_api_override_cannot_export_token_to_another_host(self):
+        project_url = "https://gitlab.com/group/repo"
+        with patch("auth_service.app.live_metrics._host_is_public", return_value=True):
+            for base in (
+                "http://gitlab.com/api/v4",
+                "https://evil.example.org/api/v4",
+                "https://user:pass@gitlab.com/api/v4",
+                "https://gitlab.com:444/api/v4",
+                "https://gitlab.com/api/v4?x=1",
+                "https://gitlab.com/api/v4#fragment",
+                "https://gitlab.com/a/../api/v4",
+            ):
+                with self.subTest(base=base):
+                    with patch.dict(os.environ, {
+                        "PROJECT_GITLAB_API_BASE": base,
+                        "PROJECT_API_ALLOWED_HOSTS": "",
+                    }):
+                        with self.assertRaises(HTTPException) as ctx:
+                            _project_endpoint(project_url, "gitlab")
+                        self.assertEqual(ctx.exception.status_code, 422)
+            with patch.dict(os.environ, {
+                "PROJECT_GITLAB_API_BASE": "https://gitlab.com/gitlab/api/v4",
+                "PROJECT_API_ALLOWED_HOSTS": "",
+            }):
+                base, project = _project_endpoint(project_url, "gitlab")
+                self.assertEqual(base, "https://gitlab.com/gitlab/api/v4")
+                self.assertEqual(project, "group%2Frepo")
+
 
 
 if __name__ == "__main__":

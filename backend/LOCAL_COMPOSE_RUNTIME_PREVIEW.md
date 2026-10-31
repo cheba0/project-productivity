@@ -32,9 +32,9 @@ automatically bypassed:
 
 - `PROJECT_TOKEN_ENCRYPTION_KEY` is absent; configuring encrypted
   per-project provider tokens requires a stable deployment secret.
-- `PROJECT_API_ALLOWED_HOSTS` is absent; provider hostname
-  restrictions and DNS rebinding/SSRF protection require a reviewed
-  design before accepting external provider URLs in production.
+- `PROJECT_API_ALLOWED_HOSTS` is absent; custom Redmine/GitLab
+  hostnames cannot be used without explicit admin approval. DNS
+  rebinding/SSRF protection still requires network egress controls.
 - `redmine_service` still targets localhost test Redmine; this test
   instance must not be exposed or copied to Cloud.ru.
 

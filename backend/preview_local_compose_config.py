@@ -26,8 +26,8 @@ DATABASES = {
 # Only these three existing deployment blockers are expected to remain.
 EXPECTED_BLOCKERS = {
     "PROJECT_TOKEN_ENCRYPTION_KEY is missing",
-    ("PROJECT_API_ALLOWED_HOSTS is empty: arbitrary public provider "
-     "domains and DNS-rebinding risks require egress/SSRF review"),
+    ("PROJECT_API_ALLOWED_HOSTS is empty: Redmine hosts need explicit approval; "
+     "DNS rebinding and egress controls still require review"),
     "redmine_service points to local test Redmine; never use that in Cloud.ru",
 }
 

@@ -46,18 +46,53 @@ def _host_is_public(host):
 
 
 def _project_endpoint(url, service):
-    parsed = urlparse(url or '')
-    if parsed.scheme != 'https' or not parsed.hostname or parsed.username or parsed.password or parsed.port not in (None, 443):
+    """Allow only administrator-approved public HTTPS API destinations.
+
+    URL ownership is established by exact hostname matches, not by matching
+    domain suffixes or by accepting arbitrary publicly resolved hosts.
+    A second network egress boundary is still needed against DNS rebinding.
+    """
+    try:
+        parsed = urlparse(url or '')
+        port = parsed.port
+    except ValueError:
+        raise HTTPException(422, f'{service}_url is malformed') from None
+
+    if (parsed.scheme != 'https' or not parsed.hostname
+            or parsed.username or parsed.password or port not in (None, 443)
+            or parsed.params or parsed.query or parsed.fragment
+            or '\\' in (url or '')):
         raise HTTPException(422, f'{service}_url must be a public HTTPS project URL')
-    # На сервере для внутренних корпоративных API можно явно разрешить домены.
-    allowed = {s.strip().lower() for s in os.getenv('PROJECT_API_ALLOWED_HOSTS', '').split(',') if s.strip()}
-    # Official gitlab.com can be identified without relying on local DNS,
-    # which may be unavailable in an offline development environment.
-    # HTTPS certificate verification remains enabled; redirects are disabled.
+
+    host = parsed.hostname.lower()
+    # Even operator allowlists may not authorize local, literal-IP or
+    # single-label endpoints. Do not use the user's URL as an egress bypass.
+    if (host.endswith('.') or '.' not in host
+            or host.endswith(('.localhost', '.local', '.internal', '.test'))
+            or host in ('localhost', 'localhost.localdomain')):
+        raise HTTPException(422, f'{service}_url host is not allowed')
+    try:
+        ipaddress.ip_address(host)
+    except ValueError:
+        pass
+    else:
+        raise HTTPException(422, f'{service}_url IP literals are not allowed')
+
+    allowed = {
+        value.strip().lower()
+        for value in os.getenv('PROJECT_API_ALLOWED_HOSTS', '').split(',')
+        if value.strip()
+    }
+    # Public GitLab SaaS is an explicit built-in trusted provider.
     if service == 'gitlab':
         allowed.add('gitlab.com')
-    if parsed.hostname.lower() not in allowed and not _host_is_public(parsed.hostname):
-        raise HTTPException(422, f'{service}_url host is not allowed')
+    if host not in allowed:
+        raise HTTPException(422, f'{service}_url host is not in the trusted allowlist')
+    # A DNS check helps catch simple private-address misconfiguration,
+    # but does not prevent resolution changes between check and connection.
+    if not _host_is_public(host):
+        raise HTTPException(422, f'{service}_url host must resolve only to public IPs')
+
     path = parsed.path.rstrip('/')
     if service == 'gitlab':
         if '/-/' in path:
@@ -65,13 +100,32 @@ def _project_endpoint(url, service):
         path = path.removesuffix('.git')
         if not path.strip('/'):
             raise HTTPException(422, 'GitLab project path missing')
-        # Поддерживает GitLab, установленный в подпапке: API base задаётся отдельно.
         api_base = os.getenv('PROJECT_GITLAB_API_BASE')
         if api_base:
+            try:
+                configured = urlparse(api_base)
+                api_port = configured.port
+            except ValueError:
+                raise HTTPException(422, 'Invalid PROJECT_GITLAB_API_BASE') from None
+            segments = configured.path.split('/')
+            if (configured.scheme != 'https'
+                    or configured.hostname != parsed.hostname
+                    or configured.username or configured.password
+                    or api_port not in (None, 443)
+                    or configured.query or configured.fragment or configured.params
+                    or not configured.path.rstrip('/').endswith('/api/v4')
+                    or '..' in segments or '.' in segments
+                    or '\\' in api_base):
+                raise HTTPException(
+                    422, 'PROJECT_GITLAB_API_BASE must be HTTPS on the GitLab project host'
+                )
             base = api_base.rstrip('/')
         else:
             base = f'{parsed.scheme}://{parsed.netloc}/api/v4'
         return base, quote(path.lstrip('/'), safe='')
+
+    if service != 'redmine':
+        raise HTTPException(422, 'Unknown integration service')
     if '/projects/' not in path:
         raise HTTPException(422, 'Redmine URL must contain /projects/{identifier}')
     root, identifier = path.rsplit('/projects/', 1)

@@ -173,13 +173,13 @@ def check_frontend_and_secrets(services):
     allowed = str(env.get("PROJECT_API_ALLOWED_HOSTS") or "").strip()
     if not allowed:
         block(
-            "PROJECT_API_ALLOWED_HOSTS is empty: arbitrary public provider "
-            "domains and DNS-rebinding risks require egress/SSRF review"
+            "PROJECT_API_ALLOWED_HOSTS is empty: Redmine hosts need explicit approval; "
+            "DNS rebinding and egress controls still require review"
         )
     else:
         note(
-            "Provider allowlist exists, but the current code also permits arbitrary "
-            "public DNS; this is NOT a complete SSRF safeguard"
+            "Exact provider allowlist is configured; DNS rebinding remains a risk "
+            "until outbound network restrictions are enforced"
         )
 
 
