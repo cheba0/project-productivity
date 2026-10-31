@@ -46,3 +46,11 @@ services:
     restart: unless-stopped
     command: python -u -m analytics_service.app.services.kafka_consumer
     env_file: .env
+
+  project_sync_worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command: python -u -m auth_service.app.services.project_sync_worker
+    env_file: .env

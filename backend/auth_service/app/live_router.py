@@ -14,7 +14,8 @@ from auth_service.app.database import get_db
 from auth_service.app.models import User
 from auth_service.app.project_models import ProjectMember
 from auth_service.app.projects_router import require_user, load_project
-from auth_service.app.live_metrics import compute, fetch, sprint_dates, sprint_list
+from auth_service.app.live_metrics import compute, sprint_dates, sprint_list
+from auth_service.app.services.project_snapshot import get_cached_data, sync_project, sync_status
 from auth_service.app.member_profile import MemberProfile
 from auth_service.app.live_schemas import MemberProfileUpdate
 
@@ -50,7 +51,7 @@ def _members(db, project):
 def _dashboard(project, db, sprint, start, end):
     first, last = _period(project, sprint, start, end)
     members, users = _members(db, project)
-    return compute(fetch(project, first, last), members, users, first, last)
+    return compute(get_cached_data(db, project, first, last), members, users, first, last)
 
 
 @router.get('/{project_id}/sprints')
@@ -114,7 +115,7 @@ def get_member_dashboard(project_id: UUID, member_id: UUID,
     member = _member(db, project, member_id)
     profile = db.get(MemberProfile, member.id)
     first, last = _period(project, sprint, start, end)
-    data = fetch(project, first, last)
+    data = get_cached_data(db, project, first, last)
     result = compute(data, *_members(db, project), first, last)
     git_email = (profile.gitlab_email if profile and profile.gitlab_email else member.email).lower()
     commits = [c for c in data['commits'] if (c.get('author_email') or '').lower() == git_email]
@@ -184,3 +185,14 @@ def get_live_card(project_id: UUID, db: Session = Depends(get_db),
             'is_paused': project.is_paused, 'archived_at': project.archived_at,
             'summary': result['summary'], 'daily_activity': result['daily_activity'],
             'sources': result['sources'], 'period': result['period']}
+
+@router.get('/{project_id}/sync-status')
+def get_sync_status(project_id: UUID, db: Session = Depends(get_db),
+                    user: User = Depends(require_user)):
+    return sync_status(db, load_project(db, project_id, user))
+
+
+@router.post('/{project_id}/sync')
+def refresh_metrics(project_id: UUID, db: Session = Depends(get_db),
+                    user: User = Depends(require_user)):
+    return sync_project(db, load_project(db, project_id, user, write=True))
