@@ -75,6 +75,18 @@ class DashboardStudentMetricsTests(unittest.TestCase):
         self.assertIsNone(row["tasks_total"])
         self.assertEqual(row["gitlab_commits"], 0)
 
+    def test_total_hours_include_entries_without_issue(self):
+        self.data["entries"].append({
+            "id": 2, "user": {"id": 42},
+            "hours": 2, "spent_on": "2026-10-20",
+            "created_on": "2026-10-20T10:00:00Z",
+        })
+        result = self.run_compute()
+        self.assertEqual(result["summary"]["actual_hours"], 8)
+        self.assertEqual(result["students"][0]["actual_hours"], 8)
+        # Hours without an issue do not belong to issue #101.
+        self.assertEqual(result["tasks"][0]["spent_hours"], 6)
+
     def test_null_timestamps_do_not_break_last_activity(self):
         self.data["commits"].append({"id": "unknown", "author_email": None})
         self.data["issues"].append({

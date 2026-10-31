@@ -253,7 +253,9 @@ def compute(data, members, users, start, end, profiles=None, *,
     total = len(tasks)
     done = sum(t['done'] for t in tasks)
     total_planned = sum(_hours(t['estimated_hours']) for t in tasks if t['estimated_hours'] is not None)
-    total_actual = sum(_hours(t['spent_hours']) for t in tasks)
+    # Count all time entries, including entries without an associated issue.
+    # Task-level spent_hours above intentionally stays issue-linked.
+    total_actual = sum(_hours(e.get('hours')) for e in entries)
     estimated_count = sum(t['estimated_hours'] is not None for t in tasks)
     quality = {'normal': 0, 'warning': 0, 'error': 0, 'unplanned': 0}
     for task in tasks:
