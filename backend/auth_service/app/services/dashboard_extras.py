@@ -105,7 +105,10 @@ def upcoming_deadlines(data, *, today=None, days=14, limit=25):
     rows = []
     for task in data.get("issues", []):
         status = ((task.get("status") or {}).get("name") or "").strip()
-        if task.get("closed_on") or status.lower() in {"closed", "resolved", "закрыта", "решена"}:
+        status_closed = (task.get("status") or {}).get("is_closed")
+        is_closed = (bool(status_closed) if status_closed is not None
+                     else status.lower() in {"closed", "resolved", "закрыта", "решена"})
+        if task.get("closed_on") or is_closed:
             continue
         due = _day(task.get("due_date"))
         if due is None:

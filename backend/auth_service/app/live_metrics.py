@@ -51,6 +51,11 @@ def _project_endpoint(url, service):
         raise HTTPException(422, f'{service}_url must be a public HTTPS project URL')
     # На сервере для внутренних корпоративных API можно явно разрешить домены.
     allowed = {s.strip().lower() for s in os.getenv('PROJECT_API_ALLOWED_HOSTS', '').split(',') if s.strip()}
+    # Official gitlab.com can be identified without relying on local DNS,
+    # which may be unavailable in an offline development environment.
+    # HTTPS certificate verification remains enabled; redirects are disabled.
+    if service == 'gitlab':
+        allowed.add('gitlab.com')
     if parsed.hostname.lower() not in allowed and not _host_is_public(parsed.hostname):
         raise HTTPException(422, f'{service}_url host is not allowed')
     path = parsed.path.rstrip('/')

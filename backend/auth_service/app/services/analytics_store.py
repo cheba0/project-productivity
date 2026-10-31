@@ -108,7 +108,7 @@ def fetch_analytics_data(workspace_id, start: date, end: date) -> dict | None:
                 "issues": [{
                     "id": t.redmine_issue_id,
                     "subject": t.subject,
-                    "status": {"name": t.status_name or ""},
+                    "status": {"name": t.status_name or "", "is_closed": bool(t.is_closed)},
                     "closed_on": iso(t.closed_at) if t.is_closed else None,
                     "updated_on": iso(t.closed_at) if t.is_closed else iso(t.created_at),
                     "start_date": iso(t.created_at.date()) if t.created_at else None,

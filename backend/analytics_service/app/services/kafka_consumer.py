@@ -24,10 +24,11 @@ from analytics_service.app.services.task_commit_service import (
 def parse_datetime(value):
     if not value:
         return None
+    return datetime.fromisoformat(value.replace("Z", "+00:00"))
 
-    return datetime.fromisoformat(
-        value.replace("Z", "+00:00")
-    )
+
+def parse_date(value):
+    return date.fromisoformat(str(value)[:10]) if value else None
 
 
 def get_project_mapping(db, event, source):
@@ -205,22 +206,21 @@ def save_issue_event(event):
         # 4 - Закрыта
         #
         # Для текущего тестового подключения.
-        status_names = {
-            1: "Новая",
-            2: "В работе",
-            3: "На проверке",
-            4: "Закрыта",
-        }
-
+        # New Redmine events carry actual status metadata; ID=4 is only a
+        # compatibility fallback for old test events.
         status_id = int(status_external_id)
-
-        if status_id not in status_names:
-            raise ValueError(
-                f"Unknown Redmine status: {status_id}"
-            )
-
-        task.status_name = status_names[status_id]
-        task.is_closed = status_id == 4
+        legacy_names = {1: "Новая", 2: "В работе", 3: "На проверке", 4: "Закрыта"}
+        name = data.get("status_name") or legacy_names.get(status_id)
+        if not name:
+            raise ValueError(f"Unknown Redmine status: {status_id}")
+        task.status_name = name
+        task.is_closed = (
+            bool(data["status_is_closed"])
+            if data.get("status_is_closed") is not None
+            else status_id == 4
+        )
+        task.start_date = parse_date(data.get("start_date"))
+        task.due_date = parse_date(data.get("due_date"))
 
         task.estimated_hours = (
             Decimal(str(data["estimated_hours"]))
