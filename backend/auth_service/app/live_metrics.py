@@ -196,7 +196,8 @@ def _hours(value):
     return round(float(value or 0), 2)
 
 
-def compute(data, members, users, start, end):
+def compute(data, members, users, start, end, profiles=None, *,
+            active_after_days=3, delayed_after_days=7, as_of=None):
     """Нормализованный ответ для всех экранов, исключительно из upstream JSON.
 
     Redmine spent_on/time_entries — фактические часы; estimated_hours — план.
@@ -262,23 +263,86 @@ def compute(data, members, users, start, end):
         else:
             deviation = (task['spent_hours'] - float(estimate)) / float(estimate)
             quality['normal' if deviation <= 0.1 else 'warning' if deviation <= 0.2 else 'error'] += 1
-    last_git = max((_parse_dt(c.get('committed_date') or c.get('created_at')) for c in commits), default=None)
-    last_red = max((_parse_dt(i.get('updated_on')) for i in issues), default=None)
-    if last_red is None:
-        last_red = max((_parse_dt(e.get('created_on')) for e in entries), default=None)
+    # Ignore missing timestamps rather than comparing None with datetime.
+    last_git = max((dt for c in commits
+                    if (dt := _parse_dt(c.get('committed_date') or c.get('created_at')))), default=None)
+    last_red = max((
+        [dt for i in issues if (dt := _parse_dt(i.get('updated_on')))]
+        + [dt for e in entries
+           if (dt := _parse_dt(e.get('created_on') or e.get('spent_on')))]
+    ), default=None)
+
+    profiles = profiles or {}
+    today = (as_of or datetime.now(timezone.utc)).date()
+
+    def inactivity(last):
+        return max(0, (today - last.date()).days) if last else None
+
+    def tier(days):
+        if days is None:
+            return None
+        return ('working' if days <= active_after_days else
+                'delayed' if days <= delayed_after_days else 'idle')
+
     students = []
     for member in members:
         user = users.get(member.user_id)
+        profile = profiles.get(member.id)
         name = user.name if user else None
         email = member.email.strip().lower()
-        matched = git_by_email.get(email, [])
-        # Не связываем по совпадению имени: могут быть тёзки.
-        red_id = None  # Связь с Redmine user_id должна быть указана отдельно.
-        students.append({'member_id': str(member.id), 'name': name, 'email': email,
-                         'role': member.role, 'gitlab_commits': len(matched),
-                         'redmine_user_id': red_id,
-                         'redmine_hours': None, 'planned_hours': None,
-                         'activity_at': max((_parse_dt(c.get('committed_date')) for c in matched), default=None)})
+        # Email must be explicitly stored in the profile or match the
+        # authenticated TPU member email; never join users by display name.
+        git_email = ((getattr(profile, 'gitlab_email', None) or email)
+                     .strip().lower())
+        matched = git_by_email.get(git_email, [])
+        git_last = max(
+            (dt for c in matched
+             if (dt := _parse_dt(c.get('committed_date') or c.get('created_at')))),
+            default=None,
+        )
+        red_id = getattr(profile, 'redmine_user_id', None)
+        red_entries = red_by_id.get(str(red_id), []) if red_id is not None else []
+        assigned = ([t for t in tasks if str(t['assigned_to']) == str(red_id)]
+                    if red_id is not None else [])
+        plan_values = [float(t['estimated_hours']) for t in assigned
+                       if t['estimated_hours'] is not None]
+        planned = round(sum(plan_values), 2) if plan_values else None
+        actual = (round(sum(_hours(e.get('hours')) for e in red_entries), 2)
+                  if red_id is not None else None)
+        red_last = max(
+            (dt for e in red_entries
+             if (dt := _parse_dt(e.get('created_on') or e.get('spent_on')))),
+            default=None,
+        )
+        git_days, red_days = inactivity(git_last), inactivity(red_last)
+        known_tiers = [v for v in (tier(git_days), tier(red_days)) if v]
+        activity_status = (
+            'unknown' if not known_tiers else
+            'partial' if len(set(known_tiers)) > 1 else
+            known_tiers[0]
+        )
+        students.append({
+            'member_id': str(member.id), 'name': name, 'email': email,
+            'role': member.role, 'gitlab_commits': len(matched),
+            'redmine_user_id': red_id,
+            'redmine_entries': len(red_entries) if red_id is not None else None,
+            'redmine_hours': actual, 'actual_hours': actual,
+            'planned_hours': planned,
+            'hours_deviation': round(actual - planned, 2)
+                if actual is not None and planned is not None else None,
+            'hours_deviation_percent': round((actual - planned) / planned * 100, 1)
+                if actual is not None and planned is not None and planned > 0 else None,
+            'tasks_total': len(assigned) if red_id is not None else None,
+            'tasks_done': sum(t['done'] for t in assigned) if red_id is not None else None,
+            'tasks_in_progress': sum(not t['done'] for t in assigned)
+                if red_id is not None else None,
+            'last_gitlab_activity': git_last,
+            'last_redmine_activity': red_last,
+            'gitlab_inactive_days': git_days,
+            'redmine_inactive_days': red_days,
+            'activity_status': activity_status,
+            'activity_at': max((v for v in (git_last, red_last) if v), default=None),
+        })
     return {
         'period': data['period'], 'sources': data['sources'],
         'summary': {'tasks_total': total, 'tasks_done': done, 'tasks_in_progress': total - done,

@@ -99,7 +99,7 @@ class ProjectView(BaseModel):
     deadline: date | None
     is_paused: bool
     archived_at: datetime | None
-    status: str                  # working/delayed/idle/unknown/paused/archived
+    status: str                  # working/delayed/idle/partial/unknown/paused/archived
     status_label: str
     progress_percent: int | None  # null — данных пока нет, не подменять 0%.
     tasks_done: int | None

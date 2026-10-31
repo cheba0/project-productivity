@@ -1,8 +1,9 @@
-"""API для страниц проекта и студента. FRONTEND: credentials: 'include'.
+"""API for project/student dashboards, computed from a PostgreSQL snapshot.
 
-Все числовые показатели получаются при запросе из API GitLab/Redmine.
-При недоступности интеграции возвращаем ошибку, не подменяем метрики нулями.
+FRONTEND: send credentials: 'include' for TPU session cookies.
+GET endpoints do not contact GitLab/Redmine and do not invent missing metrics.
 """
+from collections import Counter
 from datetime import date, timedelta
 from uuid import UUID
 
@@ -48,10 +49,27 @@ def _members(db, project):
     return members, users
 
 
+def _profiles(db, members):
+    ids = [member.id for member in members]
+    if not ids:
+        return {}
+    return {
+        profile.member_id: profile
+        for profile in db.scalars(
+            select(MemberProfile).where(MemberProfile.member_id.in_(ids))
+        ).all()
+    }
+
+
 def _dashboard(project, db, sprint, start, end):
     first, last = _period(project, sprint, start, end)
     members, users = _members(db, project)
-    return compute(get_cached_data(db, project, first, last), members, users, first, last)
+    return compute(
+        get_cached_data(db, project, first, last), members, users, first, last,
+        profiles=_profiles(db, members),
+        active_after_days=project.active_after_days,
+        delayed_after_days=project.delayed_after_days,
+    )
 
 
 @router.get('/{project_id}/sprints')
@@ -116,23 +134,75 @@ def get_member_dashboard(project_id: UUID, member_id: UUID,
     profile = db.get(MemberProfile, member.id)
     first, last = _period(project, sprint, start, end)
     data = get_cached_data(db, project, first, last)
-    result = compute(data, *_members(db, project), first, last)
+    members, users = _members(db, project)
+    result = compute(
+        data, members, users, first, last,
+        profiles=_profiles(db, members),
+        active_after_days=project.active_after_days,
+        delayed_after_days=project.delayed_after_days,
+    )
+    student = next(s for s in result['students'] if s['member_id'] == str(member.id))
     git_email = (profile.gitlab_email if profile and profile.gitlab_email else member.email).lower()
     commits = [c for c in data['commits'] if (c.get('author_email') or '').lower() == git_email]
     red_id = profile.redmine_user_id if profile else None
     red_entries = [e for e in data['entries'] if str((e.get('user') or {}).get('id')) == str(red_id)] if red_id else []
     assigned = [t for t in result['tasks'] if red_id and str(t['assigned_to']) == str(red_id)]
-    return {'profile': _profile(db, member), 'period': result['period'],
-            'sources': result['sources'],
-            'summary': {'commits': len(commits), 'redmine_entries': len(red_entries) if red_id else None,
-                        'actual_hours': round(sum(float(e.get('hours') or 0) for e in red_entries), 2) if red_id else None,
-                        'tasks_total': len(assigned) if red_id else None,
-                        'tasks_done': sum(t['done'] for t in assigned) if red_id else None,
-                        'tasks_in_progress': sum(not t['done'] for t in assigned) if red_id else None},
-            'daily_activity': [{'date': row['date'],
-                                'gitlab_commits': sum((c.get('committed_date') or c.get('created_at') or '')[:10] == row['date'] for c in commits),
-                                'redmine_updates': sum(e.get('spent_on') == row['date'] for e in red_entries) if red_id else None}
-                               for row in result['daily_activity']]}
+    commits_per_day = Counter(
+        (c.get('committed_date') or c.get('created_at') or '')[:10]
+        for c in commits
+    )
+    entries_per_day = Counter(e.get('spent_on') for e in red_entries)
+    hours_per_day = {}
+    for entry in red_entries:
+        day = entry.get('spent_on')
+        if day:
+            hours_per_day[day] = hours_per_day.get(day, 0) + float(entry.get('hours') or 0)
+    activity = []
+    active_weeks = set()
+    for row in result['daily_activity']:
+        day = row['date']
+        git_count = commits_per_day[day]
+        red_count = entries_per_day[day] if red_id is not None else None
+        kind = ('both' if git_count and red_count else
+                'gitlab' if git_count else
+                'redmine' if red_count else 'none')
+        parsed_day = date.fromisoformat(day)
+        if kind != 'none':
+            active_weeks.add(parsed_day.isocalendar()[:2])
+        activity.append({
+            'date': day,
+            'gitlab_commits': git_count,
+            # This is the number of logged time entries, not a count of issue
+            # history changes (which the legacy analytics schema lacks).
+            'redmine_updates': red_count,
+            'redmine_hours': round(hours_per_day.get(day, 0), 2)
+                if red_id is not None else None,
+            'activity_kind': kind,
+            'is_weekend': parsed_day.weekday() >= 5,
+        })
+
+    return {
+        'profile': _profile(db, member),
+        'period': result['period'], 'sources': result['sources'],
+        'summary': {
+            'commits': student['gitlab_commits'],
+            'redmine_entries': student['redmine_entries'],
+            'actual_hours': student['actual_hours'],
+            'planned_hours': student['planned_hours'],
+            'hours_deviation': student['hours_deviation'],
+            'hours_deviation_percent': student['hours_deviation_percent'],
+            'tasks_total': student['tasks_total'],
+            'tasks_done': student['tasks_done'],
+            'tasks_in_progress': student['tasks_in_progress'],
+            'last_gitlab_activity': student['last_gitlab_activity'],
+            'last_redmine_activity': student['last_redmine_activity'],
+            'gitlab_inactive_days': student['gitlab_inactive_days'],
+            'redmine_inactive_days': student['redmine_inactive_days'],
+            'activity_status': student['activity_status'],
+            'active_weeks': len(active_weeks),
+        },
+        'daily_activity': activity,
+    }
 
 
 @router.get('/{project_id}/members/{member_id}/activity')
