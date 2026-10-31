@@ -45,12 +45,31 @@ def _host_is_public(host):
         return False
 
 
+def _resolve_public_ip(host):
+    """Resolve for THIS request and allow only globally routable addresses.
+
+    The selected address is then used as the HTTPS socket destination, so
+    HTTPX cannot independently re-resolve the hostname to a private IP.
+    """
+    try:
+        records = socket.getaddrinfo(host, 443, type=socket.SOCK_STREAM)
+        addresses = {ipaddress.ip_address(item[4][0]) for item in records}
+    except (OSError, ValueError, IndexError, TypeError):
+        raise HTTPException(502, 'Integration DNS lookup failed') from None
+    if not addresses or not all(address.is_global for address in addresses):
+        raise HTTPException(502, 'Integration DNS includes a non-public address')
+    # Prefer IPv4 when available; each address must already be public.
+    selected = min(addresses, key=lambda a: (a.version != 4, str(a)))
+    return str(selected)
+
+
 def _project_endpoint(url, service):
     """Allow only administrator-approved public HTTPS API destinations.
 
     URL ownership is established by exact hostname matches, not by matching
     domain suffixes or by accepting arbitrary publicly resolved hosts.
-    A second network egress boundary is still needed against DNS rebinding.
+    The HTTPS requester separately pins each connection to its validated IP.
+    An egress firewall is still required as defense in depth.
     """
     try:
         parsed = urlparse(url or '')
@@ -88,8 +107,8 @@ def _project_endpoint(url, service):
         allowed.add('gitlab.com')
     if host not in allowed:
         raise HTTPException(422, f'{service}_url host is not in the trusted allowlist')
-    # A DNS check helps catch simple private-address misconfiguration,
-    # but does not prevent resolution changes between check and connection.
+    # Fast rejection for invalid hosts during URL validation; the outgoing
+    # HTTP client independently pins its actual connection to a safe public IP.
     if not _host_is_public(host):
         raise HTTPException(422, f'{service}_url host must resolve only to public IPs')
 
@@ -153,10 +172,24 @@ class Api:
         self.headers = headers
 
     def get(self, path, params=None):
-        # follow_redirects=False: токены никогда не пересылаются на redirect-хост.
+        # Resolve and verify every public IP immediately before the request.
+        # Connect directly to the validated IP, keeping original Host and TLS
+        # SNI/certificate hostname. This closes the DNS-check/connect race.
+        target = httpx.URL(self.base + path)
+        original_host = target.host
+        if not original_host or target.scheme != 'https':
+            raise HTTPException(502, 'Invalid integration API endpoint')
+        pinned_ip = _resolve_public_ip(original_host)
+        pinned_url = str(target.copy_with(host=pinned_ip))
+        original_host_header = urlparse(self.base).netloc
+        headers = dict(self.headers)
+        headers['Host'] = original_host_header
         try:
             with httpx.Client(timeout=12.0, follow_redirects=False, trust_env=False) as client:
-                response = client.get(self.base + path, params=params, headers=self.headers)
+                response = client.get(
+                    pinned_url, params=params, headers=headers,
+                    extensions={'sni_hostname': original_host},
+                )
             if response.status_code in (401, 403):
                 raise HTTPException(502, 'Integration API rejected credentials or permissions')
             if response.status_code >= 300:

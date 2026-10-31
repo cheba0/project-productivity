@@ -40,10 +40,12 @@ Use a separate carefully scoped container/deployment environment only
 when the production plan is decided.
 
 **Security limitations still to address before Cloud.ru:**
-- `PROJECT_API_ALLOWED_HOSTS` is now a strict hostname allowlist
-  (with built-in `gitlab.com`), but DNS can still change between validation
-  and the HTTPS request. Network egress/SSRF protections remain necessary
-  before exposing integration URL configuration to arbitrary users.
+- `PROJECT_API_ALLOWED_HOSTS` is a strict hostname allowlist
+  (with built-in `gitlab.com`). Direct per-project GitLab/Redmine requests
+  now pin each HTTPS connection to a separately validated public IP and
+  preserve Host/TLS SNI. Legacy integration producers and other clients are
+  not covered by that pin. Enforce outbound network controls before
+  exposing integration URL configuration to arbitrary users.
 - A custom `PROJECT_GITLAB_API_BASE` can redirect requests to a
   separately configured target. Validate and restrict its scheme and
   host before deploying.

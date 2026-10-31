@@ -67,3 +67,27 @@ replica, and never deploy the local test Redmine to Cloud.ru.
 and DNS-rebinding controls before enabling arbitrary user-supplied
 integration URLs in production. Enforce TLS and authentication at the
 proxy as well as in the app.
+
+## Provider egress DNS pinning (step 30)
+
+`Api.get()` in `live_metrics.py` now resolves each provider hostname at the
+moment of a request, rejects all non-global DNS answers (including mixed
+public/private address sets) and connects to the selected verified IP.
+It retains the original hostname in the HTTP `Host` header and HTTPX
+`sni_hostname` extension, so TLS certificate verification still checks
+the approved provider hostname. Redirects remain disabled and HTTPX ignores
+ambient proxy environment variables. An untrusted private DNS answer is
+blocked **before** instantiating the HTTP client or sending provider tokens.
+
+This reduces DNS-rebinding risk for **this direct per-project GitLab/Redmine
+client**. It does not automatically secure legacy provider collectors,
+other HTTP clients, or misconfigured cloud-level proxy/egress policies.
+A real Cloud.ru network rule must still prohibit metadata endpoints and
+private-network destinations as defense in depth.
+
+The HTTPS ingress proxy is not managed by this branch. At staging, confirm
+that external `https://tpu-metrics.duckdns.org/auth/tpu/callback` is routed
+to the correct auth service, TLS is valid, session cookies remain Secure,
+`/api/projects` is correctly routed, and unsafe methods with foreign
+Origin return 403. Do not change the live ingress until this has been
+reviewed with the actual Cloud.ru configuration.

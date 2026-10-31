@@ -75,3 +75,19 @@ migrations are applied. Test the token flow without DB changes first:
 
 Test fixture HTTP requests are mocked; no real GitLab/Redmine tokens,
 network calls, or database writes are used.
+
+## Per-request DNS-rebinding protection (step 30)
+
+For direct per-project GitLab/Redmine calls, the HTTP client performs a
+fresh DNS resolution, rejects private/non-global answers and pins the
+connection to one verified public IP. The original HTTPS hostname is
+preserved in both Host and TLS SNI, so server certificates are still
+verified against the approved name. A later DNS flip cannot redirect
+that request to a private socket destination. Provider tokens are sent
+only after resolution passes. Redirects are disabled.
+
+The existing legacy integration producers use different HTTP clients:
+they are **not** covered by this fix. Restrict their egress separately,
+and keep the local test Redmine out of Cloud.ru. Outbound firewall and
+metadata endpoint isolation are still required for a safe production
+deployment. Only run real-provider tests with separately approved hosts.

@@ -1,5 +1,6 @@
 """Provider URL/token contract regression tests. No network or database needed."""
 import os
+import socket
 import unittest
 from datetime import date, datetime, timedelta, timezone
 from types import SimpleNamespace
@@ -9,7 +10,7 @@ from urllib.parse import urlparse
 from cryptography.fernet import Fernet
 from fastapi import HTTPException
 
-from auth_service.app.live_metrics import fetch, compute, _project_endpoint
+from auth_service.app.live_metrics import Api, fetch, compute, _project_endpoint, _resolve_public_ip
 from auth_service.app.services.dashboard_extras import upcoming_deadlines
 
 
@@ -27,9 +28,11 @@ class ProviderContracts(unittest.TestCase):
             redmine_token_encrypted=cipher.encrypt(red_token.encode()),
         )
         calls = []
+        request_extensions = []
 
-        def fake_get(url, params=None, headers=None):
+        def fake_get(url, params=None, headers=None, extensions=None):
             calls.append((url, dict(params or {}), dict(headers or {})))
+            request_extensions.append(dict(extensions or {}))
             path = urlparse(url).path
             if path.endswith("/repository/commits"):
                 content = [{
@@ -66,6 +69,8 @@ class ProviderContracts(unittest.TestCase):
         with patch.dict(os.environ, {"PROJECT_TOKEN_ENCRYPTION_KEY": key,
                                      "PROJECT_API_ALLOWED_HOSTS": "redmine.example.org"}), \
              patch("auth_service.app.live_metrics._host_is_public", return_value=True), \
+             patch("auth_service.app.live_metrics._resolve_public_ip",
+                   return_value="93.184.216.34"), \
              patch("auth_service.app.live_metrics.httpx.Client") as http_client:
             http_client.return_value.__enter__.return_value.get.side_effect = fake_get
             data = fetch(project, today - timedelta(days=7), today)
@@ -79,7 +84,16 @@ class ProviderContracts(unittest.TestCase):
         self.assertEqual(len(calls), 4)
         self.assertTrue(any(c[2].get("PRIVATE-TOKEN") == git_token for c in calls))
         self.assertTrue(any(c[2].get("X-Redmine-API-Key") == red_token for c in calls))
-        self.assertTrue(all(url.startswith("https://") for url, _, _ in calls))
+        self.assertTrue(all(urlparse(url).hostname == "93.184.216.34"
+                            for url, _, _ in calls))
+        self.assertTrue(any(ext.get("sni_hostname") == "gitlab.com"
+                            for ext in request_extensions))
+        self.assertTrue(any(ext.get("sni_hostname") == "redmine.example.org"
+                            for ext in request_extensions))
+        self.assertTrue(any(headers.get("Host") == "gitlab.com"
+                            for _, _, headers in calls))
+        self.assertTrue(any(headers.get("Host") == "redmine.example.org"
+                            for _, _, headers in calls))
 
         calculated = compute(data, [], {}, today - timedelta(days=7), today)
         self.assertEqual(calculated["summary"]["tasks_total"], 2)
@@ -161,6 +175,66 @@ class ProviderContracts(unittest.TestCase):
                 base, project = _project_endpoint(project_url, "gitlab")
                 self.assertEqual(base, "https://gitlab.com/gitlab/api/v4")
                 self.assertEqual(project, "group%2Frepo")
+
+
+
+    def test_pinned_request_never_connects_to_later_dns_answer(self):
+        """Outgoing HTTP request is to the IP validated right before send."""
+        fake_dns = [
+            (socket.AF_INET, socket.SOCK_STREAM, 0, "", ("93.184.216.34", 443)),
+        ]
+        with patch("auth_service.app.live_metrics.socket.getaddrinfo",
+                   return_value=fake_dns) as resolve, \
+             patch("auth_service.app.live_metrics.httpx.Client") as client:
+            client.return_value.__enter__.return_value.get.return_value = SimpleNamespace(
+                status_code=200, json=lambda: {"issues": []}
+            )
+            api = Api("https://redmine.example.org", {"X-Redmine-API-Key": "synthetic"})
+            self.assertEqual(api.get("/issues.json"), {"issues": []})
+            resolve.assert_called_once_with(
+                "redmine.example.org", 443, type=socket.SOCK_STREAM
+            )
+            called = client.return_value.__enter__.return_value.get.call_args
+            self.assertEqual(
+                urlparse(called.args[0]).hostname, "93.184.216.34"
+            )
+            self.assertEqual(
+                called.kwargs["headers"]["Host"], "redmine.example.org"
+            )
+            self.assertEqual(
+                called.kwargs["extensions"]["sni_hostname"], "redmine.example.org"
+            )
+            self.assertEqual(
+                called.kwargs["headers"]["X-Redmine-API-Key"], "synthetic"
+            )
+
+    def test_private_dns_blocks_request_before_client_created(self):
+        """A late malicious/private DNS answer cannot receive API tokens."""
+        for addr in ("127.0.0.1", "10.10.0.5", "169.254.169.254"):
+            with self.subTest(addr=addr):
+                fake_dns = [
+                    (socket.AF_INET, socket.SOCK_STREAM, 0, "", (addr, 443)),
+                ]
+                with patch("auth_service.app.live_metrics.socket.getaddrinfo",
+                           return_value=fake_dns), \
+                     patch("auth_service.app.live_metrics.httpx.Client") as client:
+                    with self.assertRaises(HTTPException) as exc:
+                        Api("https://redmine.example.org",
+                            {"X-Redmine-API-Key": "synthetic"}).get("/issues.json")
+                    self.assertEqual(exc.exception.status_code, 502)
+                    client.assert_not_called()
+
+    def test_mixed_public_and_private_dns_fails_closed(self):
+        fake_dns = [
+            (socket.AF_INET, socket.SOCK_STREAM, 0, "", ("93.184.216.34", 443)),
+            (socket.AF_INET, socket.SOCK_STREAM, 0, "", ("10.0.0.2", 443)),
+        ]
+        with patch("auth_service.app.live_metrics.socket.getaddrinfo",
+                   return_value=fake_dns), \
+             patch("auth_service.app.live_metrics.httpx.Client") as client:
+            with self.assertRaises(HTTPException):
+                Api("https://gitlab.com", {"PRIVATE-TOKEN": "synthetic"}).get("/api/v4")
+            client.assert_not_called()
 
 
 
