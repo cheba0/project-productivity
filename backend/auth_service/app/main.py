@@ -1,8 +1,10 @@
 
+import os
 import secrets
 
 import httpx
 from fastapi import FastAPI, Depends, HTTPException, Request, Response
+from urllib.parse import urlparse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
@@ -28,15 +30,45 @@ app.include_router(projects_router)
 from auth_service.app.live_router import router as live_router
 app.include_router(live_router)
 
-FRONTEND_URL = "https://tpu-metrics.duckdns.org"
+FRONTEND_URL = os.getenv("TPU_FRONTEND_URL", "https://tpu-metrics.duckdns.org").rstrip("/")
 OAUTH_COOKIE_PATH = "/auth/tpu"
+
+
+def cookie_secure() -> bool:
+    """HTTPS browser cookies by default; HTTP only in explicitly opted-in local dev."""
+    value = os.getenv("TPU_COOKIE_SECURE", "true").strip().lower()
+    if value in {"true", "1", "yes", "on"}:
+        return True
+    if value in {"false", "0", "no", "off"}:
+        if urlparse(FRONTEND_URL).hostname not in {"localhost", "127.0.0.1"}:
+            raise RuntimeError(
+                "Insecure auth cookies are allowed only with a localhost TPU_FRONTEND_URL"
+            )
+        return False
+    raise RuntimeError("TPU_COOKIE_SECURE must be true or false")
+
+
+frontend = urlparse(FRONTEND_URL)
+if (
+    frontend.scheme not in {"https", "http"}
+    or not frontend.hostname
+    or frontend.username or frontend.password
+    or frontend.path not in ("", "/")
+    or frontend.query or frontend.fragment
+):
+    raise RuntimeError("TPU_FRONTEND_URL must be a plain HTTP(S) origin")
+if frontend.scheme == "http" and frontend.hostname not in {"localhost", "127.0.0.1"}:
+    raise RuntimeError("Non-local TPU_FRONTEND_URL must use HTTPS")
+if frontend.scheme == "http" and cookie_secure():
+    raise RuntimeError("For local HTTP frontend set TPU_COOKIE_SECURE=false")
+
 
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[FRONTEND_URL],
     allow_credentials=True,
-    allow_methods=["GET", "POST"],
+    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type"],
 )
 
@@ -63,7 +95,7 @@ def tpu_login():
 
     cookie_options = {
         "httponly": True,
-        "secure": False,
+        "secure": cookie_secure(),
         "samesite": "lax",
         "max_age": 600,
         "path": OAUTH_COOKIE_PATH,
@@ -174,7 +206,7 @@ async def tpu_callback(
         key="session_token",
         value=session_token,
         httponly=True,
-        secure=False,
+        secure=cookie_secure(),
         samesite="lax",
         max_age=7 * 24 * 60 * 60,
         path="/",
