@@ -230,6 +230,7 @@ def fetch(project, start: date, end: date):
     if not (project.gitlab_url and project.gitlab_token_encrypted) and not (project.redmine_url and project.redmine_token_encrypted):
         raise HTTPException(409, 'At least one integration URL and token required')
     commits, issues, entries = [], [], []
+    merge_requests = None  # None: unavailable; []: checked, zero MRs.
     sources = {'gitlab': 'not_configured', 'redmine': 'not_configured'}
     if project.gitlab_url and project.gitlab_token_encrypted:
         git_base, git_id = _project_endpoint(project.gitlab_url, 'gitlab')
@@ -238,6 +239,10 @@ def fetch(project, start: date, end: date):
             'since': start.isoformat() + 'T00:00:00Z',
             'until': end.isoformat() + 'T23:59:59Z', 'all': 'true',
         })
+        # Merge requests are distinct from merge commits. Reuse the same
+        # vetted GitLab endpoint and encrypted credential for both APIs.
+        merge_requests = git.pages(f'/projects/{git_id}/merge_requests',
+                                   {'state': 'all'})
         sources['gitlab'] = 'live'
     if project.redmine_url and project.redmine_token_encrypted:
         red_base, red_id = _project_endpoint(project.redmine_url, 'redmine')
@@ -258,9 +263,12 @@ def fetch(project, start: date, end: date):
         entries = red.pages('/time_entries.json', {'project_id': red_id,
                             'from': start.isoformat(), 'to': end.isoformat()})
         sources['redmine'] = 'live'
-    return {'commits': commits, 'issues': issues, 'entries': entries,
-            'period': {'start': start.isoformat(), 'end': end.isoformat()},
-            'sources': sources}
+    result = {'commits': commits, 'issues': issues, 'entries': entries,
+              'period': {'start': start.isoformat(), 'end': end.isoformat()},
+              'sources': sources}
+    if merge_requests is not None:
+        result['merge_requests'] = merge_requests
+    return result
 
 def sprint_dates(project, number, today=None):
     if not project.start_date:
@@ -308,6 +316,13 @@ def compute(data, members, users, start, end, profiles=None, *,
     Нет данных об оценке -> planned_hours=null, а не 0.
     """
     commits, issues, entries = data['commits'], data['issues'], data['entries']
+    # Historic Analytics has commits but no MR records: return unknown, not 0.
+    mr_available = 'merge_requests' in data
+    merge_requests = data.get('merge_requests') or []
+    mr_created = (sum(bool(d := _date(mr.get('created_at'))) and start <= d <= end
+                      for mr in merge_requests) if mr_available else None)
+    mr_merged = (sum(bool(d := _date(mr.get('merged_at'))) and start <= d <= end
+                     for mr in merge_requests) if mr_available else None)
     days = defaultdict(lambda: {'gitlab_commits': 0, 'redmine_updates': 0, 'redmine_hours': 0.0})
     git_by_email = defaultdict(list)
     git_by_name = defaultdict(list)
@@ -457,6 +472,8 @@ def compute(data, members, users, start, end, profiles=None, *,
                     'progress_percent': round(done / total * 100) if total else None,
                     'commits': sum(x['gitlab_commits'] for x in days.values()),
                     'redmine_time_entries': len(entries),
+                    'merge_requests_created': mr_created,
+                    'merge_requests_merged': mr_merged,
                     'actual_hours': round(total_actual, 2),
                     'planned_hours': round(total_planned, 2) if estimated_count else None,
                     'last_gitlab_activity': last_git, 'last_redmine_activity': last_red},

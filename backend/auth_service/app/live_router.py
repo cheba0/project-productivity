@@ -101,6 +101,36 @@ def get_workload(project_id: UUID, sprint: int | None = Query(None, ge=1),
             'sources': result['sources']}
 
 
+@router.get('/{project_id}/merge-requests')
+def get_merge_requests(project_id: UUID, start: date | None = None,
+                       end: date | None = None,
+                       db: Session = Depends(get_db),
+                       user: User = Depends(require_user)):
+    """Authenticated MR detail from the cached snapshot only."""
+    project = load_project(db, project_id, user)
+    data, first, last = _snapshot_window(db, project, start, end)
+    available = 'merge_requests' in data
+    from auth_service.app.live_metrics import _date
+    rows = data.get('merge_requests', [])
+    return {
+        'period': {'start': first.isoformat(), 'end': last.isoformat()},
+        'sources': data['sources'], 'available': available,
+        'reason': None if available else 'gitlab_merge_requests_not_synced',
+        'created': sum(bool(d := _date(row.get('created_at'))) and first <= d <= last
+                       for row in rows) if available else None,
+        'merged': sum(bool(d := _date(row.get('merged_at'))) and first <= d <= last
+                      for row in rows) if available else None,
+        'items': [{
+            'iid': row.get('iid'),
+            'title': row.get('title'),
+            'state': row.get('state'),
+            'created_at': row.get('created_at'),
+            'merged_at': row.get('merged_at'),
+            'web_url': row.get('web_url'),
+        } for row in rows],
+    }
+
+
 @router.get('/{project_id}/planning-quality')
 def get_planning_quality(project_id: UUID, sprint: int | None = Query(None, ge=1),
                          start: date | None = None, end: date | None = None,

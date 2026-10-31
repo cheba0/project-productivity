@@ -89,6 +89,13 @@ def get_cached_data(db: Session, project: Project, start: date, end: date) -> di
         "issues": payload["issues"],
         "entries": [e for e in payload["entries"]
                     if start.isoformat() <= (e.get("spent_on") or "") <= end.isoformat()],
+        **({"merge_requests": [
+            mr for mr in payload["merge_requests"]
+            if any(
+                start.isoformat() <= (mr.get(field) or "")[:10] <= end.isoformat()
+                for field in ("created_at", "merged_at")
+            )
+        ]} if "merge_requests" in payload else {}),
         "period": {"start": start.isoformat(), "end": end.isoformat()},
         "sources": {source: "cached" if flag == "live" else flag
                     for source, flag in payload["sources"].items()},
@@ -122,6 +129,28 @@ def _save_error(db: Session, project_id, error: str, attempted_at: datetime) -> 
     db.commit()
 
 
+def merge_live_with_analytics(live: dict, legacy: dict | None) -> dict:
+    """Use live data for configured sources and legacy data for the others.
+
+    The legacy mapping must belong to this authenticated workspace. Never
+    add two datasets from the same source, or lose legacy Redmine entries
+    just because GitLab has been newly connected.
+    """
+    if not legacy:
+        return live
+    result = dict(live)
+    sources = dict(live['sources'])
+    if sources['gitlab'] == 'not_configured':
+        result['commits'] = legacy['commits']
+        sources['gitlab'] = legacy['sources']['gitlab']
+    if sources['redmine'] == 'not_configured':
+        result['issues'] = legacy['issues']
+        result['entries'] = legacy['entries']
+        sources['redmine'] = legacy['sources']['redmine']
+    result['sources'] = sources
+    return result
+
+
 def sync_project(db: Session, project: Project) -> dict:
     """Update raw provider data and project cards atomically."""
     project_id = project.id
@@ -140,12 +169,20 @@ def sync_project(db: Session, project: Project) -> dict:
         if project.start_date and start < project.start_date <= end:
             start = project.start_date
         if has_provider_credentials(project):
-            # New projects: fetch live GitLab/Redmine using encrypted
-            # per-project tokens, not legacy .env credentials.
+            # For a legacy Redmine workspace with a new GitLab connection,
+            # preserve all old Redmine rows until a replacement is approved.
             data = fetch(project, start, end)
+            missing_provider = any(
+                data['sources'][name] == 'not_configured'
+                for name in ('gitlab', 'redmine')
+            )
+            if missing_provider and has_analytics_mapping(project.workspace_id):
+                legacy = fetch_analytics_data(project.workspace_id, start, end)
+                if legacy is None:
+                    raise HTTPException(503, "Analytics mapping became unavailable")
+                data = merge_live_with_analytics(data, legacy)
         else:
-            # Pre-imported test data: analytics_db is the source of truth.
-            # This path never attempts to reach a localhost Redmine.
+            # Existing analytics data is read-only; no localhost Redmine sync.
             data = fetch_analytics_data(project.workspace_id, start, end)
             if data is None:
                 raise HTTPException(409, "No analytics mapping for this workspace")

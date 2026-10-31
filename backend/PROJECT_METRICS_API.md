@@ -10,6 +10,17 @@ POST /api/projects/{id}/sync (owner only) forces synchronization.
 The project_sync_worker service checks active projects every minute; default
 refresh interval is 900 seconds (PROJECT_SYNC_INTERVAL_SECONDS).
 
+Direct GitLab sync includes merge requests separately from merge commits:
+`merge_requests_created` and `merge_requests_merged` summary counts,
+plus cached `GET /api/projects/{id}/merge-requests`. An Analytics-only
+snapshot lacks MR history and responds with `available=false`, null counts,
+not misleading zeros.
+
+For a legacy workspace with existing Redmine tasks/time entries and a new
+encrypted GitLab project token, one sync combines **live GitLab
+commits/MRs** with **read-only legacy Redmine data**. A live provider
+takes precedence over its own legacy source, without double counting.
+
 GET endpoints /dashboard, /workload, /planning-quality, /live-card, and
 member dashboards/activity use snapshots in PostgreSQL. They no longer call
 providers on every page load. The cache covers the previous 366 days,

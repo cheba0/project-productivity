@@ -39,6 +39,12 @@ class ProviderContracts(unittest.TestCase):
                     "id": "abc", "author_email": "dev@example.org",
                     "committed_date": datetime.now(timezone.utc).isoformat(),
                 }]
+            elif path.endswith("/merge_requests"):
+                content = [
+                    {"iid": 7, "state": "merged",
+                     "created_at": datetime.now(timezone.utc).isoformat(),
+                     "merged_at": datetime.now(timezone.utc).isoformat()}
+                ]
             elif path.endswith("/issues.json"):
                 content = {"issues": [
                     {"id": 12, "subject": "Done",
@@ -77,11 +83,12 @@ class ProviderContracts(unittest.TestCase):
 
         self.assertEqual(data["sources"], {"gitlab": "live", "redmine": "live"})
         self.assertEqual(len(data["commits"]), 1)
+        self.assertEqual(len(data["merge_requests"]), 1)
         self.assertEqual(len(data["issues"]), 2)
         self.assertEqual(len(data["entries"]), 1)
         self.assertTrue(data["issues"][0]["status"]["is_closed"])
         self.assertFalse(data["issues"][1]["status"]["is_closed"])
-        self.assertEqual(len(calls), 4)
+        self.assertEqual(len(calls), 5)
         self.assertTrue(any(c[2].get("PRIVATE-TOKEN") == git_token for c in calls))
         self.assertTrue(any(c[2].get("X-Redmine-API-Key") == red_token for c in calls))
         self.assertTrue(all(urlparse(url).hostname == "93.184.216.34"
@@ -98,6 +105,7 @@ class ProviderContracts(unittest.TestCase):
         calculated = compute(data, [], {}, today - timedelta(days=7), today)
         self.assertEqual(calculated["summary"]["tasks_total"], 2)
         self.assertEqual(calculated["summary"]["tasks_done"], 1)
+        self.assertEqual(calculated["summary"]["merge_requests_merged"], 1)
         self.assertEqual(calculated["summary"]["actual_hours"], 2)
 
         deadlines = upcoming_deadlines(data, today=today, days=14)

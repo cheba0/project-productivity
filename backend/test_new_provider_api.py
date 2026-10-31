@@ -30,6 +30,9 @@ def fake_get(api, path, params=None):
     if path.endswith("/repository/commits"):
         return [{"id": "test-commit", "author_email": "student@example.org",
                  "committed_date": timestamp}]
+    if path.endswith("/merge_requests"):
+        return [{"iid": 7, "state": "merged", "created_at": timestamp,
+                 "merged_at": timestamp}]
     if path == "/issues.json":
         return {"issues": [
             {"id": 101, "subject": "Completed", "status": {"id": 55, "name": "Завершено"},
@@ -89,7 +92,7 @@ with patch.dict(os.environ, {"PROJECT_TOKEN_ENCRYPTION_KEY": key,
                 assert deadline.status_code == 200, deadline.text
                 assert [row["id"] for row in deadline.json()["items"]] == [102]
                 print("DUE TASK:", deadline.json()["items"][0]["id"])
-            assert len(calls) == 4
+            assert len(calls) == 5
             assert any(h.get("PRIVATE-TOKEN") == "fake-gitlab-token" for _, h in calls)
             assert any(h.get("X-Redmine-API-Key") == "fake-redmine-token" for _, h in calls)
             print("ALL PROVIDER URL/TOKEN API TESTS PASSED")
