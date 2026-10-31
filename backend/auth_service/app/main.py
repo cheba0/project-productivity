@@ -6,7 +6,7 @@ import httpx
 from fastapi import FastAPI, Depends, HTTPException, Request, Response
 from urllib.parse import urlparse
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, JSONResponse
 from sqlalchemy.orm import Session
 
 from auth_service.app.database import get_db
@@ -62,6 +62,39 @@ if frontend.scheme == "http" and frontend.hostname not in {"localhost", "127.0.0
 if frontend.scheme == "http" and cookie_secure():
     raise RuntimeError("For local HTTP frontend set TPU_COOKIE_SECURE=false")
 
+
+
+UNSAFE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
+
+
+def trusted_browser_origin(request: Request) -> bool:
+    """Accept only our exact browser origin (or exact Referer origin fallback)."""
+    origin = request.headers.get("origin")
+    if origin is not None:
+        return origin == FRONTEND_URL
+    referer = request.headers.get("referer")
+    if not referer:
+        return False
+    parsed = urlparse(referer)
+    if parsed.username or parsed.password:
+        return False
+    return f"{parsed.scheme}://{parsed.netloc}" == FRONTEND_URL
+
+
+@app.middleware("http")
+async def csrf_origin_guard(request: Request, call_next):
+    """Block cookie-authenticated browser writes with missing/foreign origins.
+
+    OAuth callback uses state+PKCE on GET; it is not a mutating browser API.
+    Bearer-less requests are still validated by the normal auth dependency.
+    """
+    if (request.method in UNSAFE_METHODS
+            and request.cookies.get("session_token")
+            and not trusted_browser_origin(request)):
+        return JSONResponse(
+            status_code=403, content={"detail": "Untrusted request origin"}
+        )
+    return await call_next(request)
 
 
 app.add_middleware(

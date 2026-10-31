@@ -15,10 +15,19 @@ Cookie/session protections and front-end API access:
   permitted. The browser must send `credentials: "include"`.
 - TPU OAuth callback state and PKCE verifier continue to use a restricted
   cookie path, `/auth/tpu`. TPU session uses `Path=/`.
-- CORS is **not** an anti-CSRF boundary. Before Internet deployment,
-  separately test origin protection for all state-changing endpoints and
-  the complete TPU OAuth redirect/proxy flow. This update alone does not
-  certify production security.
+- CSRF middleware now rejects `POST`, `PUT`, `PATCH`, `DELETE`
+  requests containing a `session_token` cookie unless the exact
+  `Origin` matches `TPU_FRONTEND_URL`. If `Origin` is absent, the
+  exact origin of the `Referer` must match instead. Cross-site origins,
+  `Origin: null`, and missing origins/referers fail with HTTP 403.
+  The guard is registered inside CORS so allowed-origin responses retain
+  normal CORS handling. OAuth callback remains a GET protected by
+  state verification and PKCE, not a cookie-authenticated POST.
+- CORS is **not** an anti-CSRF boundary. CSRF header checks complement
+  `SameSite=Lax`, but do not prove production security. Before Internet
+  deployment, test the full TPU OAuth redirect/proxy flow, reverse-proxy
+  Host/TLS settings, and mutation requests from the real frontend.
+  An actual browser integration test is still required.
 
 Run the isolated tests (they make no real TPU calls or database writes):
 

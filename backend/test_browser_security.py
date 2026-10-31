@@ -48,12 +48,10 @@ class BrowserSecurityTests(unittest.TestCase):
                           return_value=SimpleNamespace(id="fake-uuid")), \
              patch.object(main, "create_session",
                           return_value="synthetic-session"):
+            self.client.cookies.set("tpu_oauth_state", "known")
+            self.client.cookies.set("tpu_code_verifier", "synthetic-verifier")
             response = self.client.get(
                 "/auth/tpu/callback?state=known&code=synthetic-code",
-                cookies={
-                    "tpu_oauth_state": "known",
-                    "tpu_code_verifier": "synthetic-verifier",
-                },
             )
         self.assertEqual(response.status_code, 303)
         cookie = next(
@@ -110,6 +108,67 @@ class BrowserSecurityTests(unittest.TestCase):
              patch.object(main, "FRONTEND_URL", "https://tpu-metrics.duckdns.org"):
             with self.assertRaises(RuntimeError):
                 main.cookie_secure()
+
+
+    def test_csrf_rejects_cookie_writes_without_trusted_origin(self):
+        """Reject malicious/missing origins before reaching database handlers."""
+        self.client.cookies.set("session_token", "synthetic-session")
+        paths = [
+            ("POST", "/auth/logout"),
+            ("POST", "/api/projects"),
+            ("PATCH", "/api/projects/00000000-0000-4000-8000-000000000001"),
+            ("DELETE", "/api/projects/00000000-0000-4000-8000-000000000001"),
+        ]
+        for method, path in paths:
+            for headers in (
+                {},
+                {"Origin": "https://untrusted.example.net"},
+                {"Origin": "null"},
+                {"Referer": main.FRONTEND_URL + ".evil.example/path"},
+                {"Origin": "https://untrusted.example.net",
+                 "Referer": main.FRONTEND_URL + "/projects"},
+            ):
+                with self.subTest(method=method, path=path, headers=headers):
+                    with patch.object(main, "delete_session") as delete:
+                        response = self.client.request(
+                            method, path, headers=headers
+                        )
+                    self.assertEqual(response.status_code, 403, response.text)
+                    self.assertEqual(
+                        response.json(), {"detail": "Untrusted request origin"}
+                    )
+                    delete.assert_not_called()
+
+    def test_csrf_allows_trusted_origin_or_referer(self):
+        """An authenticated logout is permitted only from the app origin."""
+        main.app.dependency_overrides[main.get_db] = lambda: object()
+        with patch.object(main, "delete_session") as delete_session:
+            self.client.cookies.set("session_token", "synthetic-session")
+            response = self.client.post(
+                "/auth/logout", headers={"Origin": main.FRONTEND_URL}
+            )
+            self.assertEqual(response.status_code, 204, response.text)
+            self.assertEqual(
+                response.headers.get("access-control-allow-origin"),
+                main.FRONTEND_URL,
+            )
+            delete_session.assert_called_once()
+            delete_session.reset_mock()
+
+            self.client.cookies.set("session_token", "synthetic-session")
+            response = self.client.post(
+                "/auth/logout",
+                headers={"Referer": main.FRONTEND_URL + "/projects"},
+            )
+            self.assertEqual(response.status_code, 204, response.text)
+            delete_session.assert_called_once()
+
+    def test_csrf_does_not_affect_safe_get_requests(self):
+        self.client.cookies.set("session_token", "synthetic-session")
+        response = self.client.get("/health")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["status"], "ok")
+
 
 
 if __name__ == "__main__":
