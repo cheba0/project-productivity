@@ -1,0 +1,4 @@
+services:
+  redmine_service:
+    env_file: !override
+      - ${TPU_REDMINE_SERVICE_ENV_FILE:-.env}
