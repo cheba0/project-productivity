@@ -1,0 +1,27 @@
+# LOCAL-ONLY service DNS overrides. No credentials are stored here.
+# This file is an audit input and is not a deployment instruction.
+# Pass values via the guarded preview_local_compose_config.py script only.
+services:
+  auth_service:
+    environment:
+      AUTH_DATABASE_URL: ${TPU_DOCKER_AUTH_DATABASE_URL:?Use preview_local_compose_config.py}
+      GITLAB_DATABASE_URL: ${TPU_DOCKER_GITLAB_DATABASE_URL:?Use preview_local_compose_config.py}
+      REDMINE_DATABASE_URL: ${TPU_DOCKER_REDMINE_DATABASE_URL:?Use preview_local_compose_config.py}
+      ANALYTICS_DATABASE_URL: ${TPU_DOCKER_ANALYTICS_DATABASE_URL:?Use preview_local_compose_config.py}
+  gitlab_service:
+    environment:
+      GITLAB_DATABASE_URL: ${TPU_DOCKER_GITLAB_DATABASE_URL:?Use preview_local_compose_config.py}
+  redmine_service:
+    environment:
+      REDMINE_DATABASE_URL: ${TPU_DOCKER_REDMINE_DATABASE_URL:?Use preview_local_compose_config.py}
+  analytics_service:
+    environment:
+      ANALYTICS_DATABASE_URL: ${TPU_DOCKER_ANALYTICS_DATABASE_URL:?Use preview_local_compose_config.py}
+  analytics_consumer:
+    environment:
+      ANALYTICS_DATABASE_URL: ${TPU_DOCKER_ANALYTICS_DATABASE_URL:?Use preview_local_compose_config.py}
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9094
+  project_sync_worker:
+    environment:
+      AUTH_DATABASE_URL: ${TPU_DOCKER_AUTH_DATABASE_URL:?Use preview_local_compose_config.py}
+      ANALYTICS_DATABASE_URL: ${TPU_DOCKER_ANALYTICS_DATABASE_URL:?Use preview_local_compose_config.py}

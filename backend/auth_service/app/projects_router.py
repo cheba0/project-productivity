@@ -92,6 +92,30 @@ def activity_days(last_at: datetime | None) -> int | None:
     return max(0, (datetime.now(timezone.utc) - last_at).days)
 
 
+def project_activity_state(gitlab_days, redmine_days, active_days, delayed_days):
+    """Classify both sources; diverging known source states mean 'partial'."""
+    def tier(days):
+        if days is None:
+            return None
+        if days <= active_days:
+            return "working"
+        if days <= delayed_days:
+            return "delayed"
+        return "idle"
+
+    known = [state for state in (tier(gitlab_days), tier(redmine_days)) if state]
+    if not known:
+        return "unknown", "Нет данных"
+    if len(set(known)) > 1:
+        return "partial", "Частично"
+    labels = {
+        "working": "Идёт работа",
+        "delayed": "Замедление",
+        "idle": "Простой",
+    }
+    return known[0], labels[known[0]]
+
+
 def project_view(db: Session, project: Project) -> ProjectView:
     participants = db.scalars(select(ProjectMember).where(ProjectMember.project_id == project.id)
                               .order_by(ProjectMember.created_at, ProjectMember.id)).all()
@@ -104,18 +128,11 @@ def project_view(db: Session, project: Project) -> ProjectView:
         state, label = "archived", "В архиве"
     elif project.is_paused:
         state, label = "paused", "На паузе"
-    elif gitlab_days is None and redmine_days is None:
-        state, label = "unknown", "Нет данных"
     else:
-        # По макету: зелёный <= 3 д., жёлтый <= 7 д., красный > 7 д.
-        # Статус определяется худшим из доступных источников.
-        worst = max(x for x in (gitlab_days, redmine_days) if x is not None)
-        if worst <= project.active_after_days:
-            state, label = "working", "Идёт работа"
-        elif worst <= project.delayed_after_days:
-            state, label = "delayed", "Замедление"
-        else:
-            state, label = "idle", "Простой"
+        state, label = project_activity_state(
+            gitlab_days, redmine_days,
+            project.active_after_days, project.delayed_after_days,
+        )
     total = activity.tasks_total if activity else None
     done = activity.tasks_done if activity else None
     progress = round(min(100, max(0, done / total * 100))) if total and done is not None else None

@@ -40,12 +40,12 @@ class ProjectMapping(Base):
 
     gitlab_connection_id: Mapped[UUID] = mapped_column(
         PG_UUID(as_uuid=True),
-        nullable=False,
+        nullable=True,
     )
 
     gitlab_project_id: Mapped[int] = mapped_column(
         BigInteger,
-        nullable=False,
+        nullable=True,
     )
 
     redmine_connection_id: Mapped[UUID] = mapped_column(
@@ -223,6 +223,9 @@ class AnalyticsTask(Base):
     spent_hours: Mapped[Decimal | None] = mapped_column(
         Numeric(12, 2)
     )
+
+    start_date: Mapped[date | None] = mapped_column(Date)
+    due_date: Mapped[date | None] = mapped_column(Date)
 
     created_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True)

@@ -1,8 +1,9 @@
-"""API для страниц проекта и студента. FRONTEND: credentials: 'include'.
+"""API for project/student dashboards, computed from a PostgreSQL snapshot.
 
-Все числовые показатели получаются при запросе из API GitLab/Redmine.
-При недоступности интеграции возвращаем ошибку, не подменяем метрики нулями.
+FRONTEND: send credentials: 'include' for TPU session cookies.
+GET endpoints do not contact GitLab/Redmine and do not invent missing metrics.
 """
+from collections import Counter
 from datetime import date, timedelta
 from uuid import UUID
 
@@ -12,9 +13,11 @@ from sqlalchemy.orm import Session
 
 from auth_service.app.database import get_db
 from auth_service.app.models import User
-from auth_service.app.project_models import ProjectMember
+from auth_service.app.project_models import ProjectMember, ProjectMetricSnapshot
+from auth_service.app.services.dashboard_extras import sprint_hours, upcoming_deadlines
 from auth_service.app.projects_router import require_user, load_project
-from auth_service.app.live_metrics import compute, fetch, sprint_dates, sprint_list
+from auth_service.app.live_metrics import compute, sprint_dates, sprint_list
+from auth_service.app.services.project_snapshot import get_cached_data, sync_project, sync_status
 from auth_service.app.member_profile import MemberProfile
 from auth_service.app.live_schemas import MemberProfileUpdate
 
@@ -47,10 +50,31 @@ def _members(db, project):
     return members, users
 
 
+def _profiles(db, members):
+    ids = [member.id for member in members]
+    if not ids:
+        return {}
+    return {
+        profile.member_id: profile
+        for profile in db.scalars(
+            select(MemberProfile).where(MemberProfile.member_id.in_(ids))
+        ).all()
+    }
+
+
 def _dashboard(project, db, sprint, start, end):
     first, last = _period(project, sprint, start, end)
     members, users = _members(db, project)
-    return compute(fetch(project, first, last), members, users, first, last)
+    data = get_cached_data(db, project, first, last)
+    result = compute(
+        data, members, users, first, last,
+        profiles=_profiles(db, members),
+        active_after_days=project.active_after_days,
+        delayed_after_days=project.delayed_after_days,
+    )
+    result['sprint_hours'] = sprint_hours(data, project, first, last)
+    result['upcoming_deadlines'] = upcoming_deadlines(data)
+    return result
 
 
 @router.get('/{project_id}/sprints')
@@ -77,6 +101,36 @@ def get_workload(project_id: UUID, sprint: int | None = Query(None, ge=1),
             'sources': result['sources']}
 
 
+@router.get('/{project_id}/merge-requests')
+def get_merge_requests(project_id: UUID, start: date | None = None,
+                       end: date | None = None,
+                       db: Session = Depends(get_db),
+                       user: User = Depends(require_user)):
+    """Authenticated MR detail from the cached snapshot only."""
+    project = load_project(db, project_id, user)
+    data, first, last = _snapshot_window(db, project, start, end)
+    available = 'merge_requests' in data
+    from auth_service.app.live_metrics import _date
+    rows = data.get('merge_requests', [])
+    return {
+        'period': {'start': first.isoformat(), 'end': last.isoformat()},
+        'sources': data['sources'], 'available': available,
+        'reason': None if available else 'gitlab_merge_requests_not_synced',
+        'created': sum(bool(d := _date(row.get('created_at'))) and first <= d <= last
+                       for row in rows) if available else None,
+        'merged': sum(bool(d := _date(row.get('merged_at'))) and first <= d <= last
+                      for row in rows) if available else None,
+        'items': [{
+            'iid': row.get('iid'),
+            'title': row.get('title'),
+            'state': row.get('state'),
+            'created_at': row.get('created_at'),
+            'merged_at': row.get('merged_at'),
+            'web_url': row.get('web_url'),
+        } for row in rows],
+    }
+
+
 @router.get('/{project_id}/planning-quality')
 def get_planning_quality(project_id: UUID, sprint: int | None = Query(None, ge=1),
                          start: date | None = None, end: date | None = None,
@@ -84,6 +138,44 @@ def get_planning_quality(project_id: UUID, sprint: int | None = Query(None, ge=1
     project = load_project(db, project_id, user)
     result = _dashboard(project, db, sprint, start, end)
     return {'period': result['period'], **result['planning_quality'], 'sources': result['sources']}
+
+
+def _snapshot_window(db, project, start, end):
+    if bool(start) != bool(end):
+        raise HTTPException(422, 'Both start and end required')
+    snapshot = db.get(ProjectMetricSnapshot, project.id)
+    if not snapshot or not snapshot.period_start or not snapshot.period_end:
+        raise HTTPException(409, 'No metrics snapshot; sync this project first')
+    first = start or snapshot.period_start
+    last = end or snapshot.period_end
+    return get_cached_data(db, project, first, last), first, last
+
+
+@router.get('/{project_id}/sprint-hours')
+def get_sprint_hours(project_id: UUID, start: date | None = None,
+                     end: date | None = None,
+                     db: Session = Depends(get_db),
+                     user: User = Depends(require_user)):
+    """Full cached window by default, rather than only the current sprint."""
+    project = load_project(db, project_id, user)
+    data, first, last = _snapshot_window(db, project, start, end)
+    return {
+        'period': {'start': first.isoformat(), 'end': last.isoformat()},
+        'sources': data['sources'],
+        **sprint_hours(data, project, first, last),
+    }
+
+
+@router.get('/{project_id}/deadlines')
+def get_deadlines(project_id: UUID, days: int = Query(14, ge=1, le=365),
+                  limit: int = Query(25, ge=1, le=100),
+                  db: Session = Depends(get_db),
+                  user: User = Depends(require_user)):
+    """Current deadlines from the last successful PostgreSQL snapshot."""
+    project = load_project(db, project_id, user)
+    data, _, _ = _snapshot_window(db, project, None, None)
+    return {'sources': data['sources'],
+            **upcoming_deadlines(data, days=days, limit=limit)}
 
 
 def _member(db, project, member_id):
@@ -114,24 +206,76 @@ def get_member_dashboard(project_id: UUID, member_id: UUID,
     member = _member(db, project, member_id)
     profile = db.get(MemberProfile, member.id)
     first, last = _period(project, sprint, start, end)
-    data = fetch(project, first, last)
-    result = compute(data, *_members(db, project), first, last)
+    data = get_cached_data(db, project, first, last)
+    members, users = _members(db, project)
+    result = compute(
+        data, members, users, first, last,
+        profiles=_profiles(db, members),
+        active_after_days=project.active_after_days,
+        delayed_after_days=project.delayed_after_days,
+    )
+    student = next(s for s in result['students'] if s['member_id'] == str(member.id))
     git_email = (profile.gitlab_email if profile and profile.gitlab_email else member.email).lower()
     commits = [c for c in data['commits'] if (c.get('author_email') or '').lower() == git_email]
     red_id = profile.redmine_user_id if profile else None
     red_entries = [e for e in data['entries'] if str((e.get('user') or {}).get('id')) == str(red_id)] if red_id else []
     assigned = [t for t in result['tasks'] if red_id and str(t['assigned_to']) == str(red_id)]
-    return {'profile': _profile(db, member), 'period': result['period'],
-            'sources': result['sources'],
-            'summary': {'commits': len(commits), 'redmine_entries': len(red_entries) if red_id else None,
-                        'actual_hours': round(sum(float(e.get('hours') or 0) for e in red_entries), 2) if red_id else None,
-                        'tasks_total': len(assigned) if red_id else None,
-                        'tasks_done': sum(t['done'] for t in assigned) if red_id else None,
-                        'tasks_in_progress': sum(not t['done'] for t in assigned) if red_id else None},
-            'daily_activity': [{'date': row['date'],
-                                'gitlab_commits': sum((c.get('committed_date') or c.get('created_at') or '')[:10] == row['date'] for c in commits),
-                                'redmine_updates': sum(e.get('spent_on') == row['date'] for e in red_entries) if red_id else None}
-                               for row in result['daily_activity']]}
+    commits_per_day = Counter(
+        (c.get('committed_date') or c.get('created_at') or '')[:10]
+        for c in commits
+    )
+    entries_per_day = Counter(e.get('spent_on') for e in red_entries)
+    hours_per_day = {}
+    for entry in red_entries:
+        day = entry.get('spent_on')
+        if day:
+            hours_per_day[day] = hours_per_day.get(day, 0) + float(entry.get('hours') or 0)
+    activity = []
+    active_weeks = set()
+    for row in result['daily_activity']:
+        day = row['date']
+        git_count = commits_per_day[day]
+        red_count = entries_per_day[day] if red_id is not None else None
+        kind = ('both' if git_count and red_count else
+                'gitlab' if git_count else
+                'redmine' if red_count else 'none')
+        parsed_day = date.fromisoformat(day)
+        if kind != 'none':
+            active_weeks.add(parsed_day.isocalendar()[:2])
+        activity.append({
+            'date': day,
+            'gitlab_commits': git_count,
+            # This is the number of logged time entries, not a count of issue
+            # history changes (which the legacy analytics schema lacks).
+            'redmine_updates': red_count,
+            'redmine_hours': round(hours_per_day.get(day, 0), 2)
+                if red_id is not None else None,
+            'activity_kind': kind,
+            'is_weekend': parsed_day.weekday() >= 5,
+        })
+
+    return {
+        'profile': _profile(db, member),
+        'period': result['period'], 'sources': result['sources'],
+        'summary': {
+            'commits': student['gitlab_commits'],
+            'redmine_entries': student['redmine_entries'],
+            'actual_hours': student['actual_hours'],
+            'planned_hours': student['planned_hours'],
+            'hours_deviation': student['hours_deviation'],
+            'hours_deviation_percent': student['hours_deviation_percent'],
+            'tasks_total': student['tasks_total'],
+            'tasks_done': student['tasks_done'],
+            'tasks_in_progress': student['tasks_in_progress'],
+            'last_gitlab_activity': student['last_gitlab_activity'],
+            'last_redmine_activity': student['last_redmine_activity'],
+            'gitlab_inactive_days': student['gitlab_inactive_days'],
+            'redmine_inactive_days': student['redmine_inactive_days'],
+            'activity_status': student['activity_status'],
+            'active_weeks': len(active_weeks),
+        },
+        'daily_activity': activity,
+    }
 
 
 @router.get('/{project_id}/members/{member_id}/activity')
@@ -184,3 +328,14 @@ def get_live_card(project_id: UUID, db: Session = Depends(get_db),
             'is_paused': project.is_paused, 'archived_at': project.archived_at,
             'summary': result['summary'], 'daily_activity': result['daily_activity'],
             'sources': result['sources'], 'period': result['period']}
+
+@router.get('/{project_id}/sync-status')
+def get_sync_status(project_id: UUID, db: Session = Depends(get_db),
+                    user: User = Depends(require_user)):
+    return sync_status(db, load_project(db, project_id, user))
+
+
+@router.post('/{project_id}/sync')
+def refresh_metrics(project_id: UUID, db: Session = Depends(get_db),
+                    user: User = Depends(require_user)):
+    return sync_project(db, load_project(db, project_id, user, write=True))

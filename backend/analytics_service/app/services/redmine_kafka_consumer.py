@@ -2,7 +2,7 @@
 import asyncio
 import json
 import os
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from uuid import UUID
 
@@ -28,8 +28,11 @@ def parse_datetime(value):
 def parse_decimal(value):
     if value is None:
         return None
-
     return Decimal(str(value))
+
+
+def parse_date(value):
+    return date.fromisoformat(str(value)[:10]) if value else None
 
 
 def save_issue_event(event):
@@ -89,34 +92,24 @@ def save_issue_event(event):
         status_id = data.get("status_external_id")
         closed_at = parse_datetime(data.get("closed_at"))
 
-        status_names = {
-            1: "Новая",
-            2: "В работе",
-            3: "На проверке",
-            4: "Закрыта",
-        }
-
         if status_id is None:
             raise ValueError("Missing Redmine status ID")
-
         status_id = int(status_id)
-
-        # Временное соответствие для тестового Redmine.
-        # В рабочем приложении статусы должны
-        # определяться отдельно для каждого подключения.
-        if status_id not in status_names:
-            raise ValueError(
-                f"Unknown Redmine status: {status_id}"
-            )
+        legacy_names = {1: "Новая", 2: "В работе", 3: "На проверке", 4: "Закрыта"}
+        name = data.get("status_name") or legacy_names.get(status_id)
+        if not name:
+            raise ValueError(f"Unknown Redmine status: {status_id}")
 
         task.subject = data.get("subject") or ""
-        task.assignee_redmine_user_id = (
-            data.get("assignee_external_id")
-        )
-        task.status_name = status_names[status_id]
+        task.assignee_redmine_user_id = data.get("assignee_external_id")
+        task.status_name = name
         task.is_closed = (
-            status_id == 4
+            bool(data["status_is_closed"])
+            if data.get("status_is_closed") is not None
+            else status_id == 4
         )
+        task.start_date = parse_date(data.get("start_date"))
+        task.due_date = parse_date(data.get("due_date"))
         task.estimated_hours = parse_decimal(
             data.get("estimated_hours")
         )
