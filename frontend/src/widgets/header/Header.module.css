@@ -116,6 +116,16 @@
   outline-offset: 3px;
 }
 
+.projectControls {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.right {
+  margin-left: auto;
+}
+
 @media (max-width: 1100px) {
   .integrations {
     display: none;
@@ -131,7 +141,7 @@
     padding: 12px 16px;
   }
 
-  .right {
+  .search {
     display: none;
   }
 }

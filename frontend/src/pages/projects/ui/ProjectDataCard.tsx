@@ -1,13 +1,7 @@
-import { useEffect, useState } from 'react'
 import { Link } from 'react-router'
 import { Settings } from 'lucide-react'
 
-import {
-  getProjectLiveCard,
-  ProjectLoadingCard,
-  type ProjectDto,
-  type ProjectLiveCard,
-} from '../../../entities/project'
+import { type ProjectDto } from '../../../entities/project'
 
 import styles from './ProjectDataCard.module.css'
 
@@ -15,24 +9,27 @@ interface ProjectDataCardProps {
   project: ProjectDto
 }
 
-function daysAgo(value: string | null): number | null {
-  if (!value) return null
-
-  const timestamp = Date.parse(value)
-
-  if (!Number.isFinite(timestamp)) return null
-
-  return Math.max(
-    0,
-    Math.floor((Date.now() - timestamp) / 86_400_000),
-  )
+function statusColor(status: string): string {
+  switch (status) {
+    case 'working':
+      return 'green'
+    case 'partial':
+      return 'yellow'
+    case 'delayed':
+      return 'orange'
+    case 'idle':
+      return 'red'
+    default:
+      return 'unknown'
+  }
 }
 
 function sourceColor(
+  url: string | null,
   days: number | null,
   project: ProjectDto,
 ): string {
-  if (days === null) return 'unknown'
+  if (!url || days === null) return 'unknown'
   if (days <= project.active_after_days) return 'green'
   if (days <= project.delayed_after_days) return 'yellow'
   return 'red'
@@ -41,23 +38,20 @@ function sourceColor(
 function sourceText(
   url: string | null,
   days: number | null,
-  source: 'gitlab' | 'redmine',
 ): string {
   if (!url) return 'Не подключён'
-
-  if (days === null) {
-    return source === 'gitlab'
-      ? 'Нет коммитов за последние 30 дней'
-      : 'Нет данных об активности'
-  }
+  if (days === null) return 'Нет данных об активности'
+  if (days === 0) return 'Сегодня'
 
   return `${days} дн. назад`
 }
 
 function formatDate(value: string): string {
-  return new Intl.DateTimeFormat('ru-RU').format(
-    new Date(value.includes('T') ? value : `${value}T00:00:00`),
+  const date = new Date(
+    value.includes('T') ? value : `${value}T00:00:00`,
   )
+
+  return new Intl.DateTimeFormat('ru-RU').format(date)
 }
 
 function getInitials(name: string): string {
@@ -69,195 +63,43 @@ function getInitials(name: string): string {
     .join('')
     .toUpperCase()
 }
+
 export function ProjectDataCard({
   project,
 }: ProjectDataCardProps) {
-  const [data, setData] = useState<ProjectLiveCard | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [reload, setReload] = useState(0)
+  const archived = Boolean(project.archived_at)
+  const progress = project.progress_percent
 
-  useEffect(() => {
-    const controller = new AbortController()
+  const sources = [
+    {
+      name: 'GitLab',
+      url: project.gitlab_url,
+      days: project.gitlab_inactive_days,
+    },
+    {
+      name: 'Redmine',
+      url: project.redmine_url,
+      days: project.redmine_inactive_days,
+    },
+  ]
 
-    getProjectLiveCard(project.id, controller.signal)
-      .then((result) => {
-        if (!controller.signal.aborted) {
-          setData(result)
-        }
-      })
-      .catch((reason: unknown) => {
-        if (!controller.signal.aborted) {
-          setError(
-            reason instanceof Error
-              ? reason.message
-              : 'Не удалось загрузить данные проекта.',
-          )
-        }
-      })
+  const dates =
+    project.start_date && project.deadline
+      ? `${formatDate(project.start_date)} — ${formatDate(project.deadline)}`
+      : project.deadline
+        ? `до ${formatDate(project.deadline)}`
+        : project.start_date
+          ? `с ${formatDate(project.start_date)}`
+          : 'не указаны'
 
-    return () => controller.abort()
-  }, [project.id, reload])
-
-  function retry() {
-    setData(null)
-    setError(null)
-    setReload((value) => value + 1)
-  }
-
-  if (!data && !error) {
-    return <ProjectLoadingCard name={project.name} />
-  }
-
-  const gitlabDays = daysAgo(
-    data?.summary.last_gitlab_activity ?? null,
-  )
-
-  const redmineDays = daysAgo(
-    data?.summary.last_redmine_activity ?? null,
-  )
-
-  const gitlabColor = sourceColor(gitlabDays, project)
-  const redmineColor = sourceColor(redmineDays, project)
-
-  // Пока не выводим общий статус активности:
-  // правило для проекта с одной интеграцией ещё не согласовано.
-  let statusLabel = 'Нет данных'
-  let statusColor = 'unknown'
-
-  if (project.archived_at) {
-    statusLabel = 'В архиве'
-  } else if (project.is_paused) {
-    statusLabel = 'На паузе'
-  } else if (error) {
-    statusLabel = 'Нет связи'
-  } else {
-    const colors = [
-      ...(project.gitlab_url ? [gitlabColor] : []),
-      ...(project.redmine_url ? [redmineColor] : []),
-    ]
-
-    const hasUnknown = colors.some((color) => color === 'unknown')
-    const hasGreen = colors.some((color) => color === 'green')
-    const allGreen = colors.every((color) => color === 'green')
-    const allRed = colors.every((color) => color === 'red')
-
-    if (colors.length === 0 || hasUnknown) {
-      statusLabel = 'Нет данных'
-    } else if (allGreen) {
-      statusLabel = 'Идёт работа'
-      statusColor = 'green'
-    } else if (hasGreen) {
-      statusLabel = 'Частично'
-      statusColor = 'yellow'
-    } else if (allRed) {
-      statusLabel = 'Без активности'
-      statusColor = 'red'
-    } else {
-      statusLabel = 'Замедление'
-      statusColor = 'orange'
-    }
-  }
-  if (project.archived_at) {
-    const summary = data?.summary
-
-    return (
-      <article className={`${styles.card} ${styles.archivedCard}`}>
-        <header className={styles.header}>
-          <h2>
-            <Link
-              className={styles.projectLink}
-              to={`/projects/${project.id}`}
-            >
-              {project.name}
-            </Link>
-          </h2>
-        </header>
-
-        <span className={styles.badge}>
-          В архиве с {formatDate(project.archived_at)}
-        </span>
-
-        <div className={styles.members}>
-          <div className={styles.avatars} aria-hidden="true">
-            {project.members.slice(0, 3).map((member, index) => (
-              <span
-                key={member.id}
-                className={styles.avatar}
-                data-color={index}
-              >
-                {getInitials(member.name || member.email)}
-              </span>
-            ))}
-          </div>
-
-          <span>Участников: {project.members.length}</span>
-        </div>
-
-        {error ? (
-          <div className={styles.errorBlock}>
-            <p className={styles.error} role="alert">
-              {error}
-            </p>
-
-            <button
-              className={styles.retryButton}
-              type="button"
-              onClick={retry}
-            >
-              Повторить загрузку
-            </button>
-          </div>
-        ) : summary ? (
-          <>
-            <div className={styles.archiveDetails}>
-              <p>
-                Задачи: {summary.tasks_done} из {summary.tasks_total}
-              </p>
-
-              <p>
-                Трудозатраты: факт {summary.actual_hours} / план{' '}
-                {summary.planned_hours ?? '—'} ч
-              </p>
-
-              <p>
-                Сроки:{' '}
-                {project.start_date && project.deadline
-                  ? `${formatDate(project.start_date)} — ${formatDate(project.deadline)}`
-                  : project.start_date
-                    ? `с ${formatDate(project.start_date)}`
-                    : project.deadline
-                      ? `до ${formatDate(project.deadline)}`
-                      : 'не указаны'}
-              </p>
-            </div>
-
-            <div className={styles.archiveProgress}>
-              {summary.progress_percent === null ? (
-                <div
-                  className={styles.emptyProgress}
-                  role="img"
-                  aria-label="Прогресс: нет данных"
-                />
-              ) : (
-                <progress
-                  className={styles.progress}
-                  max={100}
-                  value={summary.progress_percent}
-                  aria-label={`Прогресс проекта «${project.name}» за последние 30 дней`}
-                />
-              )}
-
-              <span className={styles.periodNote}>
-                Показатели за последние 30 дней
-              </span>
-            </div>
-          </>
-        ) : null}
-      </article>
-    )
-  }
   return (
-    <article className={styles.card}>
+    <article
+      className={
+        archived
+          ? `${styles.card} ${styles.archivedCard}`
+          : styles.card
+      }
+    >
       <header className={styles.header}>
         <h2>
           <Link
@@ -268,24 +110,36 @@ export function ProjectDataCard({
           </Link>
         </h2>
 
-        <Link
-          className={styles.settings}
-          to={`/projects/${project.id}/settings`}
-          state={{ projectName: project.name }}
-          aria-label={`Настройки проекта «${project.name}»`}
-          title="Настройки проекта"
-        >
-          <Settings size={17} strokeWidth={1.5} aria-hidden="true" />
-        </Link>
+        {!archived && (
+          <Link
+            className={styles.settings}
+            to={`/projects/${project.id}/settings`}
+            state={{ projectName: project.name }}
+            aria-label={`Настройки проекта «${project.name}»`}
+            title="Настройки проекта"
+          >
+            <Settings
+              size={17}
+              strokeWidth={1.5}
+              aria-hidden="true"
+            />
+          </Link>
+        )}
       </header>
 
       <span className={styles.badge}>
-        <span
-          className={styles.dot}
-          data-color={statusColor}
-          aria-hidden="true"
-        />
-        {statusLabel}
+        {project.archived_at ? (
+          <>В архиве с {formatDate(project.archived_at)}</>
+        ) : (
+          <>
+            <span
+              className={styles.dot}
+              data-color={statusColor(project.status)}
+              aria-hidden="true"
+            />
+            {project.status_label}
+          </>
+        )}
       </span>
 
       <div className={styles.members}>
@@ -304,85 +158,68 @@ export function ProjectDataCard({
         <span>Участников: {project.members.length}</span>
       </div>
 
-      {error ? (
-        <div className={styles.errorBlock}>
-          <p className={styles.error} role="alert">
-            {error}
+      {archived ? (
+        <div className={styles.archiveDetails}>
+          <p>
+            Задачи: {project.tasks_done ?? '—'} из{' '}
+            {project.tasks_total ?? '—'}
           </p>
 
-          <button
-            className={styles.retryButton}
-            type="button"
-            onClick={retry}
-          >
-            Повторить загрузку
-          </button>
+          <p>Сроки: {dates}</p>
         </div>
-      ) : data ? (
-        <>
-          <div className={styles.sources}>
-            <p className={styles.source}>
+      ) : (
+        <div className={styles.sources}>
+          {sources.map((source) => (
+            <p className={styles.source} key={source.name}>
               <span
                 className={styles.dot}
-                data-color={gitlabColor}
+                data-color={sourceColor(
+                  source.url,
+                  source.days,
+                  project,
+                )}
                 aria-hidden="true"
               />
 
               <span>
-                GitLab ·{' '}
-                {sourceText(project.gitlab_url, gitlabDays, 'gitlab')}
+                {source.name} ·{' '}
+                {sourceText(source.url, source.days)}
               </span>
             </p>
+          ))}
+        </div>
+      )}
 
-            <p className={styles.source}>
-              <span
-                className={styles.dot}
-                data-color={redmineColor}
-                aria-hidden="true"
-              />
+      <footer className={styles.footer}>
+        <div className={styles.progressHeading}>
+          <span className={styles.deadline}>
+            {archived
+              ? 'Прогресс'
+              : project.deadline
+                ? `Сроки: до ${formatDate(project.deadline)}`
+                : 'Сроки не указаны'}
+          </span>
 
-              <span>
-                Redmine ·{' '}
-                {sourceText(project.redmine_url, redmineDays, 'redmine')}
-              </span>
-            </p>
-          </div>
+          <span className={styles.percentage}>
+            {progress === null ? '—' : `${progress}%`}
+          </span>
+        </div>
 
-          <footer className={styles.footer}>
-            <div className={styles.progressHeading}>
-              <span className={styles.deadline}>
-                {project.deadline
-                  ? `Сроки: до ${formatDate(project.deadline)}`
-                  : 'Сроки не указаны'}
-              </span>
-
-              <span
-                className={styles.percentage}
-                title="Прогресс за последние 30 дней"
-              >
-                {data.summary.progress_percent === null
-                  ? '—'
-                  : `${data.summary.progress_percent}%`}
-              </span>
-            </div>
-
-            {data.summary.progress_percent === null ? (
-              <div
-                className={styles.emptyProgress}
-                role="img"
-                aria-label="Прогресс: нет данных"
-              />
-            ) : (
-              <progress
-                className={styles.progress}
-                max={100}
-                value={data.summary.progress_percent}
-                aria-label={`Прогресс проекта «${project.name}» за последние 30 дней`}
-              />
-            )}
-          </footer>
-        </>
-      ) : null}
+        {progress === null ? (
+          <div
+            className={styles.emptyProgress}
+            role="img"
+            aria-label="Прогресс: нет данных"
+          />
+        ) : (
+          <progress
+            className={styles.progress}
+            max={100}
+            value={progress}
+            aria-label={`Прогресс проекта «${project.name}»`}
+          />
+        )}
+      </footer>
     </article>
   )
 }

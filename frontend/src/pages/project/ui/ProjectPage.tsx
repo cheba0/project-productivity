@@ -1,11 +1,18 @@
 import { useEffect, useState } from 'react'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { Link, useParams } from 'react-router'
+import { useProjectSyncStore } from '../../../store/projectSyncStore'
+import { TaskHoursChart } from './TaskHoursChart'
+import { PlanningQualityCard } from './PlanningQualityCard'
+import { StudentWorkloadTable } from './StudentWorkloadTable'
+import { createPortal } from 'react-dom'
+import { useProjectHeaderStore } from '../../../store/projectHeaderStore'
 
 import {
   getProject,
   getProjectDashboard,
   getProjectSprints,
+  getProjectSyncStatus,
   type ProjectDashboard,
   type ProjectDto,
   type ProjectSprint,
@@ -44,19 +51,93 @@ function activityText(value: string | null, now: number): string {
   return `${Math.floor(hours / 24)} дн. назад`
 }
 
-function deadlineText(value: string, today: string): string {
-  // Сравниваем календарные даты без влияния переходов часового пояса.
-  const days = Math.round(
-    (Date.parse(`${value}T00:00:00Z`) -
-      Date.parse(`${today}T00:00:00Z`)) /
-      86_400_000,
-  )
+function deadlineText(days: number): string {
+  if (days < 0) {
+    return `Просрочено на ${Math.abs(days)} дн.`
+  }
 
-  if (days < 0) return `Просрочено на ${Math.abs(days)} дн.`
   if (days === 0) return 'Сегодня'
   if (days === 1) return 'Завтра'
 
   return `Через ${days} дн.`
+}
+
+function projectStatusColor(status: string): string {
+  switch (status) {
+    case 'working':
+      return 'green'
+    case 'partial':
+      return 'yellow'
+    case 'delayed':
+      return 'orange'
+    case 'idle':
+      return 'red'
+    default:
+      return 'gray'
+  }
+}
+
+function calendarDay(value: string): number {
+  return Date.parse(`${value}T00:00:00Z`)
+}
+
+function projectTimeline(
+  start: string | null,
+  end: string | null,
+  today: string,
+) {
+  if (!start || !end) return null
+
+  const first = calendarDay(start)
+  const last = calendarDay(end)
+  const current = calendarDay(today)
+
+  if (
+    !Number.isFinite(first) ||
+    !Number.isFinite(last) ||
+    !Number.isFinite(current) ||
+    last < first
+  ) {
+    return null
+  }
+
+  const daysRemaining = Math.round(
+    (last - current) / 86_400_000,
+  )
+
+  const percent =
+    first === last
+      ? current >= last ? 100 : 0
+      : Math.min(
+          100,
+          Math.max(0, ((current - first) / (last - first)) * 100),
+        )
+
+  return {
+    percent,
+    label:
+      current < first
+        ? `До начала ${Math.round((first - current) / 86_400_000)} дн.`
+        : daysRemaining > 0
+          ? `Осталось ${daysRemaining} дн.`
+          : daysRemaining === 0
+            ? 'Срок заканчивается сегодня'
+            : `Срок истёк ${Math.abs(daysRemaining)} дн. назад`,
+  }
+}
+
+function safeExternalUrl(value: string | null): string | null {
+  if (!value) return null
+
+  try {
+    const url = new URL(value)
+
+    return url.protocol === 'https:' || url.protocol === 'http:'
+      ? url.href
+      : null
+  } catch {
+    return null
+  }
 }
 
 export function ProjectPage() {
@@ -74,10 +155,13 @@ function ProjectDashboardPage({
 }: {
   projectId: string
 }) {
+  const syncRevision = useProjectSyncStore((state) => state.revision)
   const [project, setProject] = useState<ProjectDto | null>(null)
+  const [periodNotice, setPeriodNotice] = useState<string | null>(null)
   const [now, setNow] = useState(() => Date.now())
   const [sprints, setSprints] = useState<ProjectSprint[]>([])
-  const [period, setPeriod] = useState('recent')
+  const [period, setPeriod] = useState('all')
+  const headerControlsElement = useProjectHeaderStore((state) => state.controlsElement)
   useEffect(() => {
     const timer = window.setInterval(() => {
       setNow(Date.now())
@@ -104,10 +188,6 @@ function ProjectDashboardPage({
 
         setSprints(sprintData.items)
 
-        if (sprintData.current_sprint !== null) {
-          setPeriod(String(sprintData.current_sprint))
-        }
-
         setProject(projectData)
       })
       .catch((error: unknown) => {
@@ -128,45 +208,121 @@ function ProjectDashboardPage({
 
     const controller = new AbortController()
 
-    const end = new Date()
-    const start = new Date(end)
-    start.setDate(start.getDate() - 29)
+    async function loadDashboard() {
+      try {
+        const syncStatus = await getProjectSyncStatus(
+          projectId,
+          controller.signal,
+        )
 
-    const query =
-      period === 'recent'
-        ? { start: dateOnly(start), end: dateOnly(end) }
-        : { sprint: Number(period) }
+        if (controller.signal.aborted) return
 
-    getProjectDashboard(project.id, query, controller.signal)
-      .then((result) => {
-        if (!controller.signal.aborted) {
-          setDashboard(result)
-        }
-      })
-      .catch((error: unknown) => {
-        if (!controller.signal.aborted) {
-          setDataError(
-            error instanceof Error
-              ? error.message
-              : 'Не удалось загрузить показатели.',
+        const available = syncStatus.period
+
+        if (!syncStatus.has_cached_data || !available) {
+          throw new Error(
+            'Данные проекта ещё не загружены. Нажмите «Обновить данные».',
           )
         }
-      })
+
+        let requestedStart = available.start
+        let requestedEnd = available.end
+
+        if (period === 'recent') {
+          const end = new Date()
+          const start = new Date(end)
+
+          start.setDate(start.getDate() - 29)
+
+          requestedStart = dateOnly(start)
+          requestedEnd = dateOnly(end)
+        } else if (period !== 'all') {
+          const selectedSprint = sprints.find(
+            (sprint) => String(sprint.number) === period,
+          )
+
+          if (!selectedSprint) {
+            throw new Error('Выбранный спринт не найден.')
+          }
+
+          requestedStart = selectedSprint.start
+          requestedEnd = selectedSprint.end
+        }
+
+        const start =
+          requestedStart < available.start
+            ? available.start
+            : requestedStart
+
+        const end =
+          requestedEnd > available.end
+            ? available.end
+            : requestedEnd
+
+        if (start > end) {
+          throw new Error(
+            'За выбранный период нет сохранённых данных.',
+          )
+        }
+
+        const result = await getProjectDashboard(
+          projectId,
+          { start, end },
+          controller.signal,
+        )
+
+        if (controller.signal.aborted) return
+
+        const notices: string[] = []
+
+        if (start !== requestedStart || end !== requestedEnd) {
+          notices.push(
+            `Данные доступны за часть выбранного периода: ` +
+            `${formatDate(start)} — ${formatDate(end)}.`,
+          )
+        }
+
+        if (syncStatus.last_error) {
+          notices.push(
+            'Последняя синхронизация завершилась ошибкой. ' +
+            'Показаны ранее сохранённые данные.',
+          )
+        }
+
+        setDashboard(result)
+        setDataError(null)
+        setPeriodNotice(notices.length ? notices.join(' ') : null)
+      } catch (reason: unknown) {
+        if (controller.signal.aborted) return
+
+        setDashboard(null)
+        setPeriodNotice(null)
+        setDataError(
+          reason instanceof Error
+            ? reason.message
+            : 'Не удалось загрузить показатели проекта.',
+        )
+      }
+    }
+
+    void loadDashboard()
 
     return () => controller.abort()
-  }, [project, period, reload])
+  }, [project, projectId, period, sprints, reload, syncRevision])
 
   function changePeriod(value: string) {
     if (value === period) return
-
+    
     setDashboard(null)
     setDataError(null)
+    setPeriodNotice(null)
     setPeriod(value)
   }
 
   function refresh() {
     setDashboard(null)
     setDataError(null)
+    setPeriodNotice(null)
     setReload((value) => value + 1)
   }
 
@@ -192,6 +348,29 @@ function ProjectDashboardPage({
     sprintIndex >= 0 ? sprints[sprintIndex + 1] : undefined
 
   const today = dateOnly(new Date(now))
+  const timeline = projectTimeline(
+    project.start_date,
+    project.deadline,
+    today,
+  )
+
+  const externalLinks = [
+    {
+      label: 'GL',
+      title: 'Открыть проект в GitLab',
+      url: safeExternalUrl(project.gitlab_url),
+    },
+    {
+      label: 'RM',
+      title: 'Открыть проект в Redmine',
+      url: safeExternalUrl(project.redmine_url),
+    },
+    {
+      label: 'ВП',
+      title: 'Открыть витрину проекта',
+      url: safeExternalUrl(project.showcase_url),
+    },
+  ]
 
   const openTasks = dashboard?.tasks.filter((task) => !task.done) ?? []
 
@@ -199,93 +378,139 @@ function ProjectDashboardPage({
     (task) => task.due_date && task.due_date < today,
   ).length
 
-  const upcomingTasks = openTasks
-    .filter((task) => task.due_date !== null)
-    .sort((a, b) => a.due_date!.localeCompare(b.due_date!))
-    .slice(0, 5)
-
+  const deadlines = dashboard?.upcoming_deadlines
   const summary = dashboard?.summary
 
   return (
     <section className={styles.page}>
-      <div className={styles.toolbar}>
-        <nav className={styles.breadcrumbs} aria-label="Навигационная цепочка">
-          <Link to="/">Проекты</Link>
-          <span aria-hidden="true">›</span>
-          <span aria-current="page">{project.name}</span>
-        </nav>
+      {headerControlsElement &&
+        createPortal(
+          <div className={styles.periodControls}>
+            <button
+              className={styles.arrowButton}
+              type="button"
+              disabled={!previousSprint}
+              onClick={() => {
+                if (previousSprint) {
+                  changePeriod(String(previousSprint.number))
+                }
+              }}
+              aria-label="Предыдущий спринт"
+            >
+              <ChevronLeft size={17} aria-hidden="true" />
+            </button>
 
-        <div className={styles.periodControls}>
-          <button
-            className={styles.arrowButton}
-            type="button"
-            disabled={!previousSprint}
-            onClick={() => {
-              if (previousSprint) {
-                changePeriod(String(previousSprint.number))
-              }
-            }}
-            aria-label="Предыдущий спринт"
-          >
-            <ChevronLeft size={17} aria-hidden="true" />
-          </button>
+            <select
+              className={styles.periodSelect}
+              value={period}
+              onChange={(event) => changePeriod(event.target.value)}
+              aria-label="Период показателей"
+            >
+              <option value="all">Весь доступный период</option>
+              <option value="recent">Последние 30 дней</option>
 
-          <select
-            className={styles.periodSelect}
-            value={period}
-            onChange={(event) => changePeriod(event.target.value)}
-            aria-label="Период показателей"
-          >
-            <option value="recent">Последние 30 дней</option>
+              {sprints.map((sprint) => (
+                <option key={sprint.number} value={sprint.number}>
+                  Спринт {sprint.number}
+                </option>
+              ))}
+            </select>
 
-            {sprints.map((sprint) => (
-              <option key={sprint.number} value={sprint.number}>
-                Спринт {sprint.number}
-              </option>
-            ))}
-          </select>
-
-          <button
-            className={styles.arrowButton}
-            type="button"
-            disabled={!nextSprint}
-            onClick={() => {
-              if (nextSprint) {
-                changePeriod(String(nextSprint.number))
-              }
-            }}
-            aria-label="Следующий спринт"
-          >
-            <ChevronRight size={17} aria-hidden="true" />
-          </button>
-        </div>
-      </div>
+            <button
+              className={styles.arrowButton}
+              type="button"
+              disabled={!nextSprint}
+              onClick={() => {
+                if (nextSprint) {
+                  changePeriod(String(nextSprint.number))
+                }
+              }}
+              aria-label="Следующий спринт"
+            >
+              <ChevronRight size={17} aria-hidden="true" />
+            </button>
+          </div>,
+          headerControlsElement,
+        )}
 
       <header className={styles.projectHeader}>
-        <h1>{project.name}</h1>
+        <div className={styles.projectIdentity}>
+          <h1>{project.name}</h1>
 
-        <span className={styles.badge}>
-          {project.archived_at
-            ? 'В архиве'
-            : project.is_paused
-              ? 'На паузе'
-              : 'Активный проект'}
-        </span>
+          <span className={styles.badge}>
+            <span
+              className={styles.statusDot}
+              data-color={
+                project.archived_at
+                  ? 'gray'
+                  : projectStatusColor(project.status)
+              }
+              aria-hidden="true"
+            />
 
-        <p className={styles.dates}>
-          <strong>Сроки:</strong>{' '}
-          {project.start_date ? formatDate(project.start_date) : '—'}
-          {' — '}
-          {project.deadline ? formatDate(project.deadline) : '—'}
-        </p>
+            {project.archived_at
+              ? 'В архиве'
+              : project.status_label}
+          </span>
+        </div>
 
-        <Link
-          className={styles.settings}
-          to={`/projects/${project.id}/settings`}
-          state={{ projectName: project.name }}
+        <div className={styles.timeline}>
+          <p className={styles.dates}>
+            <strong>Сроки:</strong>{' '}
+            {project.start_date
+              ? formatDate(project.start_date)
+              : '—'}
+            {' — '}
+            {project.deadline
+              ? formatDate(project.deadline)
+              : '—'}
+          </p>
+
+          {timeline && (
+            <>
+              <progress
+                className={styles.timelineProgress}
+                max={100}
+                value={timeline.percent}
+                aria-label="Прошедшая часть срока проекта"
+              />
+
+              <span className={styles.timelineLabel}>
+                {timeline.label}
+              </span>
+            </>
+          )}
+        </div>
+
+        <nav
+          className={styles.externalLinks}
+          aria-label="Ресурсы проекта"
         >
-          Настройки
-        </Link>
+          {externalLinks.map((item) =>
+            item.url ? (
+              <a
+                key={item.label}
+                className={styles.externalLink}
+                href={item.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label={item.title}
+                title={item.title}
+              >
+                {item.label}
+              </a>
+            ) : (
+              <span
+                key={item.label}
+                className={styles.externalLinkDisabled}
+                title={`${item.label}: ссылка не указана`}
+                aria-label={`${item.label}: ссылка не указана`}
+              >
+                {item.label}
+              </span>
+            ),
+          )}
+        </nav>
       </header>
 
       {dataError ? (
@@ -299,10 +524,11 @@ function ProjectDashboardPage({
         <p role="status">Загрузка показателей проекта…</p>
       ) : (
         <>
-          <p className={styles.periodNote}>
-            Период: {formatDate(dashboard.period.start)} —{' '}
-            {formatDate(dashboard.period.end)}
-          </p>
+          {periodNotice && (
+            <p className={styles.notice} role="status">
+              {periodNotice}
+            </p>
+          )}
 
           <div className={styles.overview}>
             <div className={styles.stats}>
@@ -344,47 +570,108 @@ function ProjectDashboardPage({
             </div>
 
             <section className={styles.deadlines}>
-              <h2>Ближайшие дедлайны</h2>
+              <h2>Близкие дедлайны</h2>
 
-              {upcomingTasks.length === 0 ? (
+              {!deadlines ? (
                 <p className={styles.empty}>
-                  Нет незавершённых задач со сроком в выбранной выборке.
+                  Backend не вернул данные о сроках.
+                </p>
+              ) : !deadlines.available ? (
+                <p className={styles.empty}>
+                  {deadlines.reason === 'redmine_not_configured'
+                    ? 'Подключите Redmine, чтобы видеть сроки задач.'
+                    : deadlines.reason === 'no_due_dates_in_source'
+                      ? 'Нет незавершённых задач с указанным сроком.'
+                      : 'Данные о сроках пока недоступны.'}
                 </p>
               ) : (
-                <div className={styles.tableWrapper}>
-                  <table className={styles.table}>
-                    <thead>
-                      <tr>
-                        <th scope="col">Название задачи</th>
-                        <th scope="col">Срок</th>
-                      </tr>
-                    </thead>
+                <>
+                  {deadlines.items.length === 0 ? (
+                    <p className={styles.empty}>
+                      Просроченных задач и близких дедлайнов нет.
+                    </p>
+                  ) : (
+                    <div className={styles.tableWrapper}>
+                      <table className={styles.table}>
+                        <thead>
+                          <tr>
+                            <th scope="col">Название задачи</th>
+                            <th scope="col">Срок</th>
+                          </tr>
+                        </thead>
 
-                    <tbody>
-                      {upcomingTasks.map((task) => (
-                        <tr key={task.id}>
-                          <td>
-                            #{task.id} {task.title}
-                          </td>
+                        <tbody>
+                          {deadlines.items.map((task) => (
+                            <tr key={task.id}>
+                              <td>
+                                #{task.id} {task.title || 'Без названия'}
+                              </td>
 
-                          <td
-                            className={
-                              task.due_date! < today
-                                ? styles.overdue
-                                : styles.upcoming
-                            }
-                            title={formatDate(task.due_date!)}
-                          >
-                            {deadlineText(task.due_date!, today)}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                              <td
+                                className={
+                                  task.overdue
+                                    ? styles.overdue
+                                    : styles.upcoming
+                                }
+                                title={formatDate(task.due_date)}
+                              >
+                                {deadlineText(task.days_remaining)}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+
+                  {deadlines.total_matching > deadlines.items.length && (
+                    <p className={styles.empty}>
+                      Показано {deadlines.items.length} из{' '}
+                      {deadlines.total_matching} задач.
+                    </p>
+                  )}
+                </>
+              )}
+
+              {deadlines && deadlines.open_tasks_without_due_date > 0 && (
+                <p className={styles.empty}>
+                  Незавершённых задач без срока:{' '}
+                  {deadlines.open_tasks_without_due_date}.
+                </p>
               )}
             </section>
           </div>
+          <div className={styles.chartsRow}>
+            <TaskHoursChart
+              tasks={dashboard.tasks}
+              redmineAvailable={
+                dashboard.sources.redmine !== 'not_configured'
+              }
+            />
+
+            <PlanningQualityCard
+              data={dashboard.planning_quality}
+              redmineAvailable={
+                dashboard.sources.redmine !== 'not_configured'
+              }
+              periodLabel={
+                period === 'all'
+                  ? 'Весь период'
+                  : period === 'recent'
+                    ? 'Последние 30 дней'
+                    : `Спринт ${period}`
+              }
+            />
+          </div>
+          <StudentWorkloadTable
+            students={dashboard.students}
+            gitlabAvailable={
+              dashboard.sources.gitlab !== 'not_configured'
+            }
+            redmineAvailable={
+              dashboard.sources.redmine !== 'not_configured'
+            }
+          />
         </>
       )}
     </section>

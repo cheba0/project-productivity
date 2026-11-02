@@ -1,0 +1,206 @@
+.panel {
+  min-width: 0;
+  padding: 20px;
+  border: 1px solid #e3e8e5;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 1px 2px rgb(20 40 28 / 3%);
+}
+
+.header h2 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.header p,
+.empty,
+.footnote {
+  color: #748079;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.header p {
+  margin: 6px 0 16px;
+}
+
+.scroll {
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  min-width: 900px;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.table th {
+  padding: 10px 12px;
+  color: #859088;
+  font-size: 10px;
+  font-weight: 400;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+}
+
+.table td {
+  padding: 16px 12px;
+  border-bottom: 1px solid #edf0ee;
+  vertical-align: middle;
+  font-size: 12px;
+}
+
+.table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.table tbody tr:hover {
+  background: #f4f7f5;
+}
+
+.table th:last-child,
+.table td:last-child {
+  text-align: right;
+}
+
+.person {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.avatar {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: #c4efd0;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.avatar[data-color='1'] {
+  background: #d8d9ff;
+}
+
+.avatar[data-color='2'] {
+  background: #ffe0e7;
+}
+
+.avatar[data-color='3'] {
+  background: #fff0cb;
+}
+
+.avatar[data-color='4'] {
+  background: #dcf0fa;
+}
+
+.personText {
+  display: grid;
+  gap: 5px;
+  max-width: 220px;
+  overflow-wrap: anywhere;
+}
+
+.personText span {
+  color: #748079;
+  font-size: 11px;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 9px;
+  border: 1px solid #d6ded8;
+  border-radius: 999px;
+  background: #fff;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #a6afaa;
+}
+
+.dot[data-color='green'] {
+  background: #22bf45;
+}
+
+.dot[data-color='yellow'] {
+  background: #ffb600;
+}
+
+.dot[data-color='orange'] {
+  background: #ff873f;
+}
+
+.dot[data-color='red'] {
+  background: #ff4265;
+}
+
+.activity {
+  display: grid;
+  gap: 8px;
+  color: #58675e;
+  white-space: nowrap;
+}
+
+.hours {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.hours strong {
+  min-width: 88px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.track {
+  position: relative;
+  width: 150px;
+  height: 13px;
+  border-radius: 999px;
+  background: #e9eeeb;
+}
+
+.actual {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: inherit;
+  background: #a2e4af;
+}
+
+.plan {
+  position: absolute;
+  top: 0;
+  width: 3px;
+  height: 13px;
+  border-radius: 2px;
+  background: #18201c;
+  transform: translateX(-50%);
+}
+
+.deviation {
+  display: inline-block;
+  min-width: 48px;
+  padding: 5px 8px;
+  border: 1px solid #d6ded8;
+  border-radius: 999px;
+  background: #f5f7f6;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.footnote {
+  margin: 14px 0 0;
+}

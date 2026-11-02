@@ -21,14 +21,85 @@ export interface DashboardTask {
   due_date: string | null
 }
 
+export interface ProjectDeadlines {
+  available: boolean
+  reason: string | null
+  as_of: string
+  window_days: number
+  items: {
+    id: number
+    title: string | null
+    status: string
+    due_date: string
+    days_remaining: number
+    overdue: boolean
+    assigned_to: number | null
+    estimated_hours: number | null
+  }[]
+  total_matching: number
+  known_due_date_tasks: number
+  open_tasks_without_due_date: number
+}
+
+export interface ProjectSprintHours {
+  available: boolean
+  reason: string | null
+  plan_basis: string
+  unallocated_plan_hours?: number | null
+  unallocated_estimated_tasks?: number
+  items: {
+    sprint: number
+    start: string
+    end: string
+    visible_start: string
+    visible_end: string
+    partial_period: boolean
+    planned_hours: number | null
+    actual_hours: number | null
+    deviation_hours: number | null
+    estimated_tasks: number
+    time_entries: number | null
+  }[]
+}
+
+export interface ProjectPlanningQuality {
+  counts: {
+    normal: number
+    warning: number
+    error: number
+    unplanned: number
+  }
+  total: number
+  percentages: {
+    normal: number | null
+    warning: number | null
+    error: number | null
+    unplanned: number | null
+  }
+}
+
+export interface DashboardStudent {
+  member_id: string
+  name: string | null
+  email: string
+  role: string
+  redmine_user_id: number | null
+  actual_hours: number | null
+  planned_hours: number | null
+  hours_deviation_percent: number | null
+  gitlab_inactive_days: number | null
+  redmine_inactive_days: number | null
+  activity_status: string
+}
+
 export interface ProjectDashboard {
   period: {
     start: string
     end: string
   }
   sources: {
-    gitlab: 'live' | 'not_configured'
-    redmine: 'live' | 'not_configured'
+    gitlab: 'cached' | 'database' | 'live' | 'not_configured'
+    redmine: 'cached' | 'database' | 'live' | 'not_configured'
   }
   summary: {
     tasks_total: number
@@ -42,6 +113,10 @@ export interface ProjectDashboard {
     last_redmine_activity: string | null
   }
   tasks: DashboardTask[]
+  upcoming_deadlines: ProjectDeadlines
+  sprint_hours: ProjectSprintHours
+  planning_quality: ProjectPlanningQuality
+  students: DashboardStudent[]
 }
 
 export type DashboardPeriod =

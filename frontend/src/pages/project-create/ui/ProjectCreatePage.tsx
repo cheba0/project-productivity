@@ -3,10 +3,10 @@ import { Link } from 'react-router'
 
 import {
   createProject,
-  getProjectLiveCard,
   ProjectLoadingCard,
+  syncProject,
+  type ProjectSyncStatus,
   type CreatedProject,
-  type ProjectLiveCard,
 } from '../../../entities/project'
 
 import styles from './ProjectCreatePage.module.css'
@@ -23,20 +23,28 @@ export function ProjectCreatePage() {
 
   const [loadingData, setLoadingData] = useState(false)
   const [dataError, setDataError] = useState<string | null>(null)
-  const [liveCard, setLiveCard] = useState<ProjectLiveCard | null>(null)
+  const [syncResult, setSyncResult] = useState<ProjectSyncStatus | null>(null)
 
   async function loadProjectData(projectId: string) {
     setLoadingData(true)
     setDataError(null)
+    setSyncResult(null)
 
     try {
-      const result = await getProjectLiveCard(projectId)
-      setLiveCard(result)
+      const result = await syncProject(projectId)
+
+      if (!result.has_cached_data) {
+        throw new Error(
+          result.last_error || 'Синхронизация не подготовила данные проекта.',
+        )
+      }
+
+      setSyncResult(result)
     } catch (error) {
       setDataError(
         error instanceof Error
           ? error.message
-          : 'Не удалось загрузить данные интеграций.',
+          : 'Не удалось синхронизировать данные интеграций.',
       )
     } finally {
       setLoadingData(false)
@@ -417,10 +425,17 @@ export function ProjectCreatePage() {
                 </>
               )}
 
-              {liveCard && (
-                <p>
-                  Коммитов за последние 30 дней: {liveCard.summary.commits}
-                </p>
+              {syncResult && (
+                <div role="status">
+                  <p>Данные GitLab и Redmine синхронизированы.</p>
+
+                  {syncResult.period && (
+                    <p className={styles.hint}>
+                      Доступный период: {syncResult.period.start} —{' '}
+                      {syncResult.period.end}
+                    </p>
+                  )}
+                </div>
               )}
 
               <div className={styles.resultActions}>

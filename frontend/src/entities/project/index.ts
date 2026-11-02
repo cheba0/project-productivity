@@ -9,3 +9,7 @@ export type {ProjectDto, ProjectFilter, ProjectListResponse,} from './api/getPro
 export { getProject } from './api/getProject'
 export {getProjectDashboard, getProjectSprints} from './api/getProjectDashboard'
 export type {ProjectDashboard, ProjectSprint} from './api/getProjectDashboard'
+export {getAnalyticsProjects, getAnalyticsProjectMetrics} from './api/analyticsProjects'
+export type {AnalyticsProject, AnalyticsProjectMetrics} from './api/analyticsProjects'
+export {syncProject, getProjectSyncStatus} from './api/syncProject'
+export type { ProjectSyncStatus } from './api/syncProject'

@@ -1,23 +1,23 @@
 import { useEffect, useState } from 'react'
 import { Plus } from 'lucide-react'
 import { Link } from 'react-router'
-
 import {
   getProjects,
   type ProjectFilter,
   type ProjectListResponse,
 } from '../../../entities/project'
-
 import { ProjectDataCard } from './ProjectDataCard'
+import { AnalyticsProjectsSection } from './AnalyticsProjectsSection'
 import styles from './ProjectsPage.module.css'
+import { useProjectSyncStore } from '../../../store/projectSyncStore'
 
 const filters: { value: ProjectFilter; label: string }[] = [
   { value: 'active', label: 'Активные' },
-  { value: 'paused', label: 'На паузе' },
   { value: 'archived', label: 'Архив' },
 ]
 
 export function ProjectsPage() {
+  const syncRevision = useProjectSyncStore((state) => state.revision)
   const [filter, setFilter] = useState<ProjectFilter>('active')
   const [result, setResult] = useState<ProjectListResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -30,6 +30,7 @@ export function ProjectsPage() {
       .then((response) => {
         if (!controller.signal.aborted) {
           setResult(response)
+          setError(null)
         }
       })
       .catch((reason: unknown) => {
@@ -43,7 +44,7 @@ export function ProjectsPage() {
       })
 
     return () => controller.abort()
-  }, [filter, reload])
+  }, [filter, reload, syncRevision])
 
   function refresh() {
     setResult(null)
@@ -136,6 +137,7 @@ export function ProjectsPage() {
           </div>
         </>
       )}
+      <AnalyticsProjectsSection />
     </section>
   )
 }

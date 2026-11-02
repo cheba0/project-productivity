@@ -20,6 +20,38 @@ from fastapi import HTTPException
 MAX_PAGES = 30  # ограничение, чтобы запросы не перегружали сервер
 PAGE_SIZE = 100
 
+def _local_redmine_allowed(url: str) -> bool:
+    """Разрешает только локальный Redmine в явно включённом dev-режиме."""
+    enabled = (
+        os.getenv('PROJECT_ALLOW_LOCAL_REDMINE', '').strip().lower()
+        == 'true'
+    )
+
+    frontend_url = os.getenv('TPU_FRONTEND_URL', '').rstrip('/')
+
+    if not enabled or frontend_url not in {
+        'http://localhost:5173',
+        'http://127.0.0.1:5173',
+    }:
+        return False
+
+    try:
+        parsed = urlparse(url)
+        port = parsed.port
+    except ValueError:
+        return False
+
+    return (
+        parsed.scheme == 'http'
+        and parsed.hostname in {'localhost', '127.0.0.1'}
+        and port == 8080
+        and not parsed.username
+        and not parsed.password
+        and not parsed.params
+        and not parsed.query
+        and not parsed.fragment
+        and '\\' not in url
+    )
 
 def _parse_dt(value):
     if not value:
@@ -77,6 +109,30 @@ def _project_endpoint(url, service):
     except ValueError:
         raise HTTPException(422, f'{service}_url is malformed') from None
 
+    if service == 'redmine' and _local_redmine_allowed(url or ''):
+        path = parsed.path.rstrip('/')
+        prefix = '/projects/'
+
+        if not path.startswith(prefix):
+            raise HTTPException(
+                422,
+                'Local Redmine URL must be /projects/{identifier}',
+            )
+
+        identifier = path[len(prefix):]
+
+        if (
+            not identifier
+            or '/' in identifier
+            or identifier in {'.', '..'}
+        ):
+            raise HTTPException(
+                422,
+                'Specify the local Redmine project root URL',
+            )
+
+        return 'http://127.0.0.1:8080', identifier
+    
     if (parsed.scheme != 'https' or not parsed.hostname
             or parsed.username or parsed.password or port not in (None, 443)
             or parsed.params or parsed.query or parsed.fragment
@@ -172,34 +228,74 @@ class Api:
         self.headers = headers
 
     def get(self, path, params=None):
-        # Resolve and verify every public IP immediately before the request.
-        # Connect directly to the validated IP, keeping original Host and TLS
-        # SNI/certificate hostname. This closes the DNS-check/connect race.
         target = httpx.URL(self.base + path)
-        original_host = target.host
-        if not original_host or target.scheme != 'https':
-            raise HTTPException(502, 'Invalid integration API endpoint')
-        pinned_ip = _resolve_public_ip(original_host)
-        pinned_url = str(target.copy_with(host=pinned_ip))
-        original_host_header = urlparse(self.base).netloc
         headers = dict(self.headers)
-        headers['Host'] = original_host_header
-        try:
-            with httpx.Client(timeout=12.0, follow_redirects=False, trust_env=False) as client:
-                response = client.get(
-                    pinned_url, params=params, headers=headers,
-                    extensions={'sni_hostname': original_host},
-                )
-            if response.status_code in (401, 403):
-                raise HTTPException(502, 'Integration API rejected credentials or permissions')
-            if response.status_code >= 300:
-                raise HTTPException(502, f'Integration API returned HTTP {response.status_code}')
-            return response.json()
-        except httpx.HTTPError:
-            raise HTTPException(502, 'Integration API unavailable')
-        except ValueError:
-            raise HTTPException(502, 'Integration API returned invalid JSON')
 
+        is_local_redmine = (
+            'X-Redmine-API-Key' in headers
+            and _local_redmine_allowed(self.base)
+            and _local_redmine_allowed(str(target))
+        )
+
+        if is_local_redmine:
+            # Адрес фиксирован: не выполняем DNS-запрос к localhost.
+            request_url = str(target.copy_with(host='127.0.0.1'))
+            extensions = {}
+        else:
+            # Сохраняем существующую защиту внешних HTTPS-запросов.
+            original_host = target.host
+
+            if not original_host or target.scheme != 'https':
+                raise HTTPException(
+                    502,
+                    'Invalid integration API endpoint',
+                )
+
+            pinned_ip = _resolve_public_ip(original_host)
+            request_url = str(target.copy_with(host=pinned_ip))
+
+            headers['Host'] = urlparse(self.base).netloc
+            extensions = {'sni_hostname': original_host}
+
+        try:
+            with httpx.Client(
+                timeout=12.0,
+                follow_redirects=False,
+                trust_env=False,
+            ) as client:
+                response = client.get(
+                    request_url,
+                    params=params,
+                    headers=headers,
+                    extensions=extensions,
+                )
+
+            if response.status_code in (401, 403):
+                raise HTTPException(
+                    502,
+                    'Integration API rejected credentials or permissions',
+                )
+
+            if response.status_code >= 300:
+                raise HTTPException(
+                    502,
+                    f'Integration API returned HTTP {response.status_code}',
+                )
+
+            return response.json()
+
+        except httpx.HTTPError:
+            raise HTTPException(
+                502,
+                'Integration API unavailable',
+            )
+
+        except ValueError:
+            raise HTTPException(
+                502,
+                'Integration API returned invalid JSON',
+            )
+    
     def pages(self, path, params=None):
         result = []
         params = dict(params or {})

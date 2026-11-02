@@ -3,6 +3,15 @@ export type ProjectFilter = 'active' | 'paused' | 'archived'
 export interface ProjectDto {
   id: string
   name: string
+  status: string
+  status_label: string
+  showcase_url: string | null
+  progress_percent: number | null
+  tasks_done: number | null
+  tasks_total: number | null
+  gitlab_inactive_days: number | null
+  redmine_inactive_days: number | null
+  commits_per_day: number[] | null
   gitlab_url: string | null
   redmine_url: string | null
   active_after_days: number
@@ -16,6 +25,7 @@ export interface ProjectDto {
     email: string
     name: string | null
     role: string
+    is_owner: boolean
   }[]
 }
 
