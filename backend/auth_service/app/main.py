@@ -30,7 +30,7 @@ app.include_router(projects_router)
 from auth_service.app.live_router import router as live_router
 app.include_router(live_router)
 
-FRONTEND_URL = os.getenv("TPU_FRONTEND_URL", "https://tpu-metrics.duckdns.org").rstrip("/")
+FRONTEND_URL = os.getenv("TPU_FRONTEND_URL", "https://tpu-metrics.ru").rstrip("/")
 OAUTH_COOKIE_PATH = "/auth/tpu"
 
 
