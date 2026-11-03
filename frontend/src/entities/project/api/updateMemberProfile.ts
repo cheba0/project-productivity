@@ -12,6 +12,10 @@ export interface MemberProfile {
 }
 
 export interface MemberProfileUpdate {
+  phone?: string | null
+  telegram?: string | null
+  gitlab_profile_url?: string | null
+  redmine_profile_url?: string | null
   gitlab_email?: string | null
   redmine_user_id?: number | null
 }

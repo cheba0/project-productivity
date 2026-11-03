@@ -3,11 +3,13 @@ import type {
 } from '../../../entities/project/api/getProjectDashboard'
 
 import styles from './StudentWorkloadTable.module.css'
+import { Link } from 'react-router'
 
 interface StudentWorkloadTableProps {
   students: DashboardStudent[]
   gitlabAvailable: boolean
   redmineAvailable: boolean
+  projectId: string
 }
 
 const formatter = new Intl.NumberFormat('ru-RU', {
@@ -74,6 +76,7 @@ export function StudentWorkloadTable({
   students,
   gitlabAvailable,
   redmineAvailable,
+  projectId,
 }: StudentWorkloadTableProps) {
   return (
     <section className={styles.panel}>
@@ -136,9 +139,11 @@ export function StudentWorkloadTable({
                         </span>
 
                         <div className={styles.personText}>
-                          <strong>
+                          <Link
+                            to={`/projects/${projectId}/members/${student.member_id}`}
+                            className="font-semibold text-inherit no-underline hover:underline">
                             {student.name || student.email}
-                          </strong>
+                          </Link>
 
                           <span>{roleLabel(student.role)}</span>
                         </div>

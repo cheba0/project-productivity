@@ -4,6 +4,7 @@ import { ProjectCreatePage } from '../../pages/project-create'
 import { ProjectsPage } from '../../pages/projects'
 import { ProjectSettingsPage } from '../../pages/project-settings'
 import { ProjectPage } from '../../pages/project'
+import { MemberPage } from '../../pages/member/ui/MemberPage'
 
 export function AppRoutes() {
   return (
@@ -12,6 +13,7 @@ export function AppRoutes() {
       <Route path="/projects/new" element={<ProjectCreatePage />} />
       <Route path="/projects/:projectId/settings" element={<ProjectSettingsPage />} />
       <Route path="/projects/:projectId" element={<ProjectPage />} />
+      <Route path="/projects/:projectId/members/:memberId" element={<MemberPage />} />
       <Route
         path="*"
         element={

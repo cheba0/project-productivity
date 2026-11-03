@@ -664,6 +664,7 @@ function ProjectDashboardPage({
             />
           </div>
           <StudentWorkloadTable
+            projectId={projectId} 
             students={dashboard.students}
             gitlabAvailable={
               dashboard.sources.gitlab !== 'not_configured'

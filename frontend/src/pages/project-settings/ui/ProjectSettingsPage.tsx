@@ -1,32 +1,11 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Plus, X } from 'lucide-react'
 import { Link, useLocation, useParams } from 'react-router'
-
+import {getProject, type ProjectDto} from '../../../entities/project'
+import { useAuthStore } from '../../../store/authStore'
 import styles from './ProjectSettingsPage.module.css'
 import { AddMemberDialog } from './AddMemberDialog'
 import { DeleteProjectDialog } from './DeleteProjectDialog'
-const demoMembers = [
-  {
-    id: '1',
-    name: 'Иванов Иван',
-    role: 'Frontend-разработчик',
-  },
-  {
-    id: '2',
-    name: 'Петрова Анна',
-    role: 'Backend-разработчик',
-  },
-  {
-    id: '3',
-    name: 'Сидоров Дмитрий',
-    role: 'Data Engineer',
-  },
-  {
-    id: '4',
-    name: 'Козлова Мария',
-    role: 'UI/UX дизайнер',
-  },
-]
 
 function getInitials(name: string): string {
   return name
@@ -40,10 +19,49 @@ function getInitials(name: string): string {
 
 export function ProjectSettingsPage() {
   const { projectId } = useParams<{ projectId: string }>()
+  const userEmail = useAuthStore((state) => state.user?.email)
+  const [loadedProject, setLoadedProject] = useState<ProjectDto | null>(null)
+  const [membersError, setMembersError] = useState<string | null>(null)
+  const [membersReload, setMembersReload] = useState(0)
+  useEffect(() => {
+    if (!projectId) return
+
+    const controller = new AbortController()
+
+    getProject(projectId, controller.signal)
+      .then((result) => {
+        if (controller.signal.aborted) return
+
+        setLoadedProject(result)
+        setMembersError(null)
+      })
+      .catch((reason: unknown) => {
+        if (controller.signal.aborted) return
+
+        setMembersError(
+          reason instanceof Error
+            ? reason.message
+            : 'Не удалось загрузить участников.',
+        )
+      })
+
+    return () => controller.abort()
+  }, [projectId, membersReload])
+
+  const currentProject =
+    loadedProject?.id === projectId ? loadedProject : null
+
+  const members = currentProject?.members ?? []
+
+  const canManageMembers = members.some(
+    (member) =>
+      member.is_owner &&
+      member.email.toLowerCase() === userEmail?.toLowerCase(),
+  )
   const location = useLocation()
   const routeState: unknown = location.state
 
-  const projectName =
+  const routeProjectName =
     typeof routeState === 'object' &&
     routeState !== null &&
     'projectName' in routeState &&
@@ -51,6 +69,7 @@ export function ProjectSettingsPage() {
         ? routeState.projectName
         : ''
 
+  const projectName = currentProject?.name || routeProjectName
   const [warningDays, setWarningDays] = useState('7')
   const [isAddMemberOpen, setIsAddMemberOpen] = useState(false)
   const [isDeleteProjectOpen, setIsDeleteProjectOpen] = useState(false)
@@ -280,33 +299,53 @@ export function ProjectSettingsPage() {
             >
               <div className={styles.panelHeading}>
                 <h2 id="members-title">
-                  Участники · {demoMembers.length}
+                  Участники · {currentProject ? members.length : '…'}
                 </h2>
 
                 <button
                     className={styles.addButton}
                     type="button"
                     onClick={() => setIsAddMemberOpen(true)}
+                    disabled={!canManageMembers}
                 >
                     <Plus size={16} aria-hidden="true" />
                     Добавить участника
                 </button>
               </div>
 
+              {membersError ? (
+                <div role="alert">
+                  <p>{membersError}</p>
+
+                  <button
+                    type="button"
+                    className="button"
+                    onClick={() => {
+                      setMembersError(null)
+                      setMembersReload((value) => value + 1)
+                    }}
+                  >
+                    Повторить
+                  </button>
+                </div>
+              ) : !currentProject ? (
+                <p role="status">Загрузка участников…</p>
+              ) : null}
+
               <ul className={styles.members}>
-                {demoMembers.map((member, index) => (
+                {members.map((member, index) => (
                   <li className={styles.member} key={member.id}>
                     <span
                       className={styles.avatar}
                       data-color={index % 4}
                       aria-hidden="true"
                     >
-                      {getInitials(member.name || '?')}
+                      {getInitials(member.name || member.email)}
                     </span>
 
                     <div className={styles.memberInfo}>
                       <span className={styles.memberName}>
-                        {member.name}
+                        {member.name || member.email}
                       </span>
                       <span className={styles.memberRole}>
                         {member.role}
@@ -317,7 +356,7 @@ export function ProjectSettingsPage() {
                       className={styles.removeButton}
                       type="button"
                       disabled
-                      aria-label={`Удалить участника: ${member.name}`}
+                      aria-label={`Удалить участника: ${member.name || member.email}`}
                       title="Удаление участников пока недоступно"
                     >
                       <X size={20} aria-hidden="true" />
@@ -359,10 +398,31 @@ export function ProjectSettingsPage() {
         projectName={projectName}
         onClose={() => setIsDeleteProjectOpen(false)}
       />
-      <AddMemberDialog
-        open={isAddMemberOpen}
-        onClose={() => setIsAddMemberOpen(false)}
+      {projectId && (
+        <AddMemberDialog
+          key={projectId}
+          projectId={projectId}
+          open={isAddMemberOpen}
+          onClose={() => setIsAddMemberOpen(false)}
+          onAdded={(member) => {
+            setLoadedProject((previous) => {
+              if (!previous || previous.id !== projectId) {
+                return previous
+              }
+
+              return {
+                ...previous,
+                members: [
+                  ...previous.members.filter(
+                    (item) => item.id !== member.id,
+                  ),
+                  member,
+                ],
+              }
+            })
+          }}
         />
+      )}
     </section>
   )
 }

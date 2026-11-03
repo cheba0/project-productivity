@@ -10,16 +10,18 @@ export function Header() {
   const createMatch = useMatch('/projects/new')
   const settingsMatch = useMatch('/projects/:projectId/settings')
   const projectMatch = useMatch('/projects/:projectId')
+  const memberMatch = useMatch('/projects/:projectId/members/:memberId')
 
   const isCreatePage = Boolean(createMatch)
   const isSettingsPage = Boolean(settingsMatch)
-  const showSprintControls = Boolean(projectMatch) && !isCreatePage
+  const showSprintControls = (Boolean(projectMatch) && !isCreatePage)
 
   const setControlsElement = useProjectHeaderStore((state) => state.setControlsElement)
 
   const projectId = isCreatePage
     ? undefined
     : settingsMatch?.params.projectId ??
+      memberMatch?.params.projectId ??
       projectMatch?.params.projectId
 
   const [loadedProject, setLoadedProject] = useState<{
@@ -66,6 +68,15 @@ export function Header() {
 
             {isCreatePage ? (
               <span aria-current="page">Новый проект</span>
+            ) : memberMatch ? (
+              <>
+                <Link to={`/projects/${projectId}`}>
+                  {projectName}
+                </Link>
+
+                <span aria-hidden="true">›</span>
+                <span aria-current="page">Участник</span>
+              </>
             ) : isSettingsPage ? (
               <>
                 <Link to={`/projects/${projectId}`}>
