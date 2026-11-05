@@ -8,7 +8,7 @@ import {Input} from '@/shared/ui/input'
 import {getProject, type ProjectDto} from '../../../entities/project'
 import {updateProject, type ProjectUpdate} from '../../../entities/project/api/updateProject'
 import {useAuthStore} from '../../../store/authStore'
-
+import {useProjectSyncStore} from '../../../store/projectSyncStore'
 
 import {AddMemberDialog} from './AddMemberDialog'
 import {ProjectMembersList} from './ProjectMembersList'
@@ -227,6 +227,7 @@ function SettingsEditor({initialProject}: {initialProject: ProjectDto}) {
 
       setProject(updated)
       setForm(toForm(updated))
+      useProjectSyncStore.getState().invalidateProjects()
       setSaveMessage(needsSync
         ? 'Настройки сохранены. Нажмите «Обновить данные», чтобы загрузить показатели с новыми настройками.'
         : 'Настройки сохранены.')

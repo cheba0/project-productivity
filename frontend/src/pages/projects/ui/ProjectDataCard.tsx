@@ -64,11 +64,26 @@ function getInitials(name: string): string {
     .toUpperCase()
 }
 
+function getTimelineProgress(start: string | null, end: string | null): number | null {
+  if (!start || !end) return null
+
+  const now = new Date()
+  const today = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate())
+  const first = Date.parse(`${start}T00:00:00Z`)
+  const last = Date.parse(`${end}T00:00:00Z`)
+
+  if (!Number.isFinite(first) || !Number.isFinite(last) || last < first) return null
+  if (today < first) return 0
+  if (today >= last) return 100
+
+  return Math.round(((today - first) / (last - first)) * 100)
+}
+
 export function ProjectDataCard({
   project,
 }: ProjectDataCardProps) {
   const archived = Boolean(project.archived_at)
-  const progress = project.progress_percent
+  const progress = getTimelineProgress(project.start_date, project.deadline)
 
   const sources = [
     {
@@ -187,14 +202,10 @@ export function ProjectDataCard({
       <footer className={styles.footer}>
         <div className={styles.progressHeading}>
           <span className={styles.deadline}>
-            {archived
-              ? 'Прогресс'
-              : project.deadline
-                ? `Сроки: до ${formatDate(project.deadline)}`
-                : 'Сроки не указаны'}
+            {project.deadline ? `Сроки: до ${formatDate(project.deadline)}` : 'Сроки не указаны'}
           </span>
 
-          <span className={styles.percentage}>
+          <span className={styles.percentage} title="Прошедшая часть срока проекта">
             {progress === null ? '—' : `${progress}%`}
           </span>
         </div>
@@ -203,14 +214,14 @@ export function ProjectDataCard({
           <div
             className={styles.emptyProgress}
             role="img"
-            aria-label="Прогресс: нет данных"
+            aria-label="Для расчёта нужны дата начала и дата окончания проекта"
           />
         ) : (
           <progress
             className={styles.progress}
             max={100}
             value={progress}
-            aria-label={`Прогресс проекта «${project.name}»`}
+            aria-label={`Прошло ${progress}% срока проекта «${project.name}»`}
           />
         )}
       </footer>

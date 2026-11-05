@@ -10,6 +10,7 @@ import {
 } from '../../../entities/project'
 
 import styles from './ProjectCreatePage.module.css'
+import {useProjectSyncStore} from '../../../store/projectSyncStore'
 
 export function ProjectCreatePage() {
   const [warningDays, setWarningDays] = useState('7')
@@ -130,7 +131,9 @@ export function ProjectCreatePage() {
       })
 
       setCreatedProject(project)
+      useProjectSyncStore.getState().invalidateProjects()
       await loadProjectData(project.id)
+      useProjectSyncStore.getState().invalidateProjects()
     } catch (error) {
       setSaveError(
         error instanceof Error

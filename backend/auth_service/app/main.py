@@ -30,13 +30,13 @@ app.include_router(projects_router)
 from auth_service.app.live_router import router as live_router
 app.include_router(live_router)
 
-FRONTEND_URL = os.getenv("TPU_FRONTEND_URL", "http://localhost:5173").rstrip("/")
+FRONTEND_URL = os.getenv("TPU_FRONTEND_URL", "https://tpu-metrics.ru").rstrip("/")
 OAUTH_COOKIE_PATH = "/auth/tpu"
 
 
 def cookie_secure() -> bool:
     """HTTPS browser cookies by default; HTTP only in explicitly opted-in local dev."""
-    value = os.getenv("TPU_COOKIE_SECURE", "false").strip().lower()
+    value = os.getenv("TPU_COOKIE_SECURE", "true").strip().lower()
     if value in {"true", "1", "yes", "on"}:
         return True
     if value in {"false", "0", "no", "off"}:

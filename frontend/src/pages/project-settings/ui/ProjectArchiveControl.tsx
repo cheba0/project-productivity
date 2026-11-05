@@ -5,7 +5,7 @@ import {Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle} fro
 
 import type {ProjectDto} from '../../../entities/project/api/getProjects'
 import {setProjectArchived} from '../../../entities/project/api/setProjectArchived'
-
+import {useProjectSyncStore} from '../../../store/projectSyncStore'
 interface ProjectArchiveControlProps {
   project: ProjectDto
   canManage: boolean
@@ -41,6 +41,7 @@ export function ProjectArchiveControl({
     try {
       const updated = await setProjectArchived(project.id, !archived)
       onChanged(updated)
+      useProjectSyncStore.getState().invalidateProjects()
       setOpen(false)
     } catch (reason: unknown) {
       setError(reason instanceof Error ? reason.message : 'Не удалось изменить состояние проекта.')

@@ -7,7 +7,7 @@ import {Label} from '@/shared/ui/label'
 import {Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle} from '@/shared/ui/dialog'
 
 import {deleteProject} from '../../../entities/project/api/deleteProject'
-
+import {useProjectSyncStore} from '../../../store/projectSyncStore'
 interface DeleteProjectDialogProps {
   projectId: string
   projectName: string
@@ -49,6 +49,7 @@ export function DeleteProjectDialog({projectId, projectName, open, onClose}: Del
       setConfirmation('')
       onClose()
       navigate('/', {replace: true})
+      useProjectSyncStore.getState().invalidateProjects()
     } catch (reason: unknown) {
       setError(reason instanceof Error ? reason.message : 'Не удалось удалить проект.')
     } finally {

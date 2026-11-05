@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
+import {useEffect, useRef, useState} from 'react'
+import {SprintPicker} from '../../../shared/ui/SprintPicker'
+import {ProjectTaskHoursChart} from './ProjectTaskHoursChart'
 import { Link, useParams } from 'react-router'
 import { useProjectSyncStore } from '../../../store/projectSyncStore'
-import { TaskHoursChart } from './TaskHoursChart'
 import { PlanningQualityCard } from './PlanningQualityCard'
 import { StudentWorkloadTable } from './StudentWorkloadTable'
 import { createPortal } from 'react-dom'
@@ -162,6 +162,24 @@ function ProjectDashboardPage({
   const [sprints, setSprints] = useState<ProjectSprint[]>([])
   const [period, setPeriod] = useState('all')
   const headerControlsElement = useProjectHeaderStore((state) => state.controlsElement)
+  const [deadlinesScrolling, setDeadlinesScrolling] = useState(false)
+  const deadlinesScrollTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (deadlinesScrollTimer.current !== null) clearTimeout(deadlinesScrollTimer.current)
+    }
+  }, [])
+
+  function handleDeadlinesScroll() {
+    setDeadlinesScrolling(true)
+
+    if (deadlinesScrollTimer.current !== null) clearTimeout(deadlinesScrollTimer.current)
+
+    deadlinesScrollTimer.current = setTimeout(() => {
+      setDeadlinesScrolling(false)
+    }, 800)
+  }
   useEffect(() => {
     const timer = window.setInterval(() => {
       setNow(Date.now())
@@ -186,22 +204,22 @@ function ProjectDashboardPage({
       .then(([projectData, sprintData]) => {
         if (controller.signal.aborted) return
 
+        setProjectError(null)
+        setProject(projectData)
         setSprints(sprintData.items)
 
-        setProject(projectData)
+        setPeriod((current) => {
+          if (current === 'all' || current === 'recent') return current
+          return sprintData.items.some((sprint) => String(sprint.number) === current) ? current : 'all'
+        })
       })
       .catch((error: unknown) => {
-        if (!controller.signal.aborted) {
-          setProjectError(
-            error instanceof Error
-              ? error.message
-              : 'Не удалось загрузить проект.',
-          )
-        }
+        if (controller.signal.aborted) return
+        setProjectError(error instanceof Error ? error.message : 'Не удалось загрузить проект.')
       })
 
     return () => controller.abort()
-  }, [projectId])
+  }, [projectId, syncRevision, reload])
 
   useEffect(() => {
     if (!project) return
@@ -228,22 +246,10 @@ function ProjectDashboardPage({
         let requestedStart = available.start
         let requestedEnd = available.end
 
-        if (period === 'recent') {
-          const end = new Date()
-          const start = new Date(end)
+        if (period !== 'all') {
+          const selectedSprint = sprints.find((sprint) => String(sprint.number) === period)
 
-          start.setDate(start.getDate() - 29)
-
-          requestedStart = dateOnly(start)
-          requestedEnd = dateOnly(end)
-        } else if (period !== 'all') {
-          const selectedSprint = sprints.find(
-            (sprint) => String(sprint.number) === period,
-          )
-
-          if (!selectedSprint) {
-            throw new Error('Выбранный спринт не найден.')
-          }
+          if (!selectedSprint) throw new Error('Выбранный спринт не найден.')
 
           requestedStart = selectedSprint.start
           requestedEnd = selectedSprint.end
@@ -339,14 +345,8 @@ function ProjectDashboardPage({
     return <p role="status">Загрузка проекта…</p>
   }
 
-  const sprintIndex = sprints.findIndex(
-    (sprint) => String(sprint.number) === period,
-  )
-
+  const sprintIndex = sprints.findIndex((sprint) => String(sprint.number) === period)
   const previousSprint = sprints[sprintIndex - 1]
-  const nextSprint =
-    sprintIndex >= 0 ? sprints[sprintIndex + 1] : undefined
-
   const today = dateOnly(new Date(now))
   const timeline = projectTimeline(
     project.start_date,
@@ -381,58 +381,22 @@ function ProjectDashboardPage({
   const deadlines = dashboard?.upcoming_deadlines
   const summary = dashboard?.summary
 
+  function getAssigneeName(redmineId: number | null): string {
+    if (redmineId === null) return 'Не назначен'
+
+    const member = dashboard?.students.find((student) => student.redmine_user_id === redmineId)
+
+    if (!member) return `Redmine #${redmineId}`
+
+    return member.name?.trim() || member.email
+  }
+
   return (
     <section className={styles.page}>
-      {headerControlsElement &&
-        createPortal(
-          <div className={styles.periodControls}>
-            <button
-              className={styles.arrowButton}
-              type="button"
-              disabled={!previousSprint}
-              onClick={() => {
-                if (previousSprint) {
-                  changePeriod(String(previousSprint.number))
-                }
-              }}
-              aria-label="Предыдущий спринт"
-            >
-              <ChevronLeft size={17} aria-hidden="true" />
-            </button>
-
-            <select
-              className={styles.periodSelect}
-              value={period}
-              onChange={(event) => changePeriod(event.target.value)}
-              aria-label="Период показателей"
-            >
-              <option value="all">Весь доступный период</option>
-              <option value="recent">Последние 30 дней</option>
-
-              {sprints.map((sprint) => (
-                <option key={sprint.number} value={sprint.number}>
-                  Спринт {sprint.number}
-                </option>
-              ))}
-            </select>
-
-            <button
-              className={styles.arrowButton}
-              type="button"
-              disabled={!nextSprint}
-              onClick={() => {
-                if (nextSprint) {
-                  changePeriod(String(nextSprint.number))
-                }
-              }}
-              aria-label="Следующий спринт"
-            >
-              <ChevronRight size={17} aria-hidden="true" />
-            </button>
-          </div>,
-          headerControlsElement,
-        )}
-
+      {headerControlsElement && createPortal(
+        <SprintPicker value={period} sprints={sprints} onChange={changePeriod} />,
+        headerControlsElement,
+      )}
       <header className={styles.projectHeader}>
         <div className={styles.projectIdentity}>
           <h1>{project.name}</h1>
@@ -543,7 +507,7 @@ function ProjectDashboardPage({
               </article>
 
               <article className={styles.stat}>
-                <h2>Незавершённые задачи</h2>
+                <h2>В работе</h2>
                 <strong>{summary.tasks_in_progress} задач</strong>
                 <p>Просрочено: {overdueCount}</p>
               </article>
@@ -572,114 +536,110 @@ function ProjectDashboardPage({
             <section className={styles.deadlines}>
               <h2>Близкие дедлайны</h2>
 
-              {!deadlines ? (
-                <p className={styles.empty}>
-                  Backend не вернул данные о сроках.
-                </p>
-              ) : !deadlines.available ? (
-                <p className={styles.empty}>
-                  {deadlines.reason === 'redmine_not_configured'
-                    ? 'Подключите Redmine, чтобы видеть сроки задач.'
-                    : deadlines.reason === 'no_due_dates_in_source'
-                      ? 'Нет незавершённых задач с указанным сроком.'
-                      : 'Данные о сроках пока недоступны.'}
-                </p>
-              ) : (
-                <>
-                  {deadlines.items.length === 0 ? (
-                    <p className={styles.empty}>
-                      Просроченных задач и близких дедлайнов нет.
-                    </p>
-                  ) : (
-                    <div className={styles.tableWrapper}>
-                      <table className={styles.table}>
-                        <thead>
-                          <tr>
-                            <th scope="col">Название задачи</th>
-                            <th scope="col">Срок</th>
-                          </tr>
-                        </thead>
+              <div
+                className={styles.deadlineBody}
+                data-scrolling={deadlinesScrolling}
+                onScroll={handleDeadlinesScroll}
+                tabIndex={0}
+                role="region"
+                aria-label="Список ближайших дедлайнов"
+              >
+                {!deadlines ? (
+                  <p className={styles.empty}>Backend не вернул данные о сроках.</p>
+                ) : !deadlines.available ? (
+                  <p className={styles.empty}>
+                    {deadlines.reason === 'redmine_not_configured'
+                      ? 'Подключите Redmine, чтобы видеть сроки задач.'
+                      : deadlines.reason === 'no_due_dates_in_source'
+                        ? 'Нет незавершённых задач с указанным сроком.'
+                        : 'Данные о сроках пока недоступны.'}
+                  </p>
+                ) : deadlines.items.length === 0 ? (
+                  <p className={styles.empty}>Просроченных задач и близких дедлайнов нет.</p>
+                ) : (
+                  <table className={styles.table}>
+                    <thead>
+                      <tr>
+                        <th scope="col">Название задачи</th>
+                        <th scope="col">Исполнитель</th>
+                        <th scope="col">Срок</th>
+                      </tr>
+                    </thead>
 
-                        <tbody>
-                          {deadlines.items.map((task) => (
-                            <tr key={task.id}>
-                              <td>
-                                #{task.id} {task.title || 'Без названия'}
-                              </td>
+                    <tbody>
+                      {deadlines.items.map((task) => (
+                        <tr key={task.id}>
+                          <td>#{task.id} {task.title || 'Без названия'}</td>
 
-                              <td
-                                className={
-                                  task.overdue
-                                    ? styles.overdue
-                                    : styles.upcoming
-                                }
-                                title={formatDate(task.due_date)}
-                              >
-                                {deadlineText(task.days_remaining)}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
+                          <td>{getAssigneeName(task.assigned_to)}</td>
 
-                  {deadlines.total_matching > deadlines.items.length && (
-                    <p className={styles.empty}>
-                      Показано {deadlines.items.length} из{' '}
-                      {deadlines.total_matching} задач.
-                    </p>
-                  )}
-                </>
-              )}
+                          <td
+                            className={task.overdue ? styles.overdue : styles.upcoming}
+                            title={formatDate(task.due_date)}
+                          >
+                            {deadlineText(task.days_remaining)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
 
-              {deadlines && deadlines.open_tasks_without_due_date > 0 && (
-                <p className={styles.empty}>
-                  Незавершённых задач без срока:{' '}
-                  {deadlines.open_tasks_without_due_date}.
-                </p>
-              )}
+                {deadlines?.available && deadlines.total_matching > deadlines.items.length && (
+                  <p className={styles.deadlineNote}>
+                    Показано {deadlines.items.length} из {deadlines.total_matching} задач.
+                  </p>
+                )}
+
+                {deadlines && deadlines.open_tasks_without_due_date > 0 && (
+                  <p className={styles.deadlineNote}>
+                    Незавершённых задач без срока: {deadlines.open_tasks_without_due_date}.
+                  </p>
+                )}
+              </div>
             </section>
           </div>
-          <div className={styles.chartsRow}>
-            <TaskHoursChart
-              tasks={dashboard.tasks}
-              sprints={sprints}
-              today={today}
-              selectedPeriod={period}
-              onSelectSprint={(number) => {
-                changePeriod(String(number))
-              }}
-              redmineAvailable={
-                dashboard.sources.redmine !== 'not_configured'
-              }
-            />
-
-            <PlanningQualityCard
-              tasks={dashboard.tasks}
-              redmineAvailable={
-                dashboard.sources.redmine !== 'not_configured'
-              }
-              periodLabel={
-                period === 'all'
-                  ? 'Весь период'
-                  : period === 'recent'
-                    ? 'Последние 30 дней'
-                    : `Спринт ${period}`
-              }
-            />
-          </div>
-          <StudentWorkloadTable
-            projectId={projectId} 
-            students={dashboard.students}
-            gitlabAvailable={
-              dashboard.sources.gitlab !== 'not_configured'
-            }
-            redmineAvailable={
-              dashboard.sources.redmine !== 'not_configured'
-            }
-          />
         </>
+      )}
+      <div className={styles.chartsRow}>
+        <ProjectTaskHoursChart
+          projectId={projectId}
+          sprints={sprints}
+          today={today}
+          selectedPeriod={period}
+          refreshKey={reload}
+          onSelectSprint={(number) => {
+            const value = String(number)
+            changePeriod(period === value ? 'all' : value)
+          }}
+        />
+
+        {dashboard && !dataError ? (
+          <PlanningQualityCard
+            projectId={projectId}
+            tasks={dashboard.tasks}
+            redmineAvailable={dashboard.sources.redmine !== 'not_configured'}
+            isSprint={sprintIndex >= 0}
+            previousSprint={previousSprint}
+            periodLabel={period === 'all' ? 'Весь период' : `Спринт ${period}`}
+          />
+        ) : (
+          <section className="min-w-0 rounded-2xl border border-solid border-[#e3e8e5] bg-white p-5 shadow-sm">
+            <h2 className="m-0 text-[15px] font-bold">Качество планирования</h2>
+            <p className="mt-4 text-xs text-[#748079]" role="status">
+              {dataError ? 'Нет данных за выбранный период.' : 'Загрузка показателей…'}
+            </p>
+          </section>
+        )}
+      </div>
+
+      {dashboard && !dataError && (
+        <StudentWorkloadTable
+          projectId={projectId}
+          students={dashboard.students}
+          gitlabAvailable={dashboard.sources.gitlab !== 'not_configured'}
+          redmineAvailable={dashboard.sources.redmine !== 'not_configured'}
+        />
       )}
     </section>
   )

@@ -204,3 +204,35 @@
 .footnote {
   margin: 14px 0 0;
 }
+
+.memberRow {
+  position: relative;
+}
+
+.memberLink {
+  color: inherit;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.memberLink::after {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  content: '';
+  cursor: pointer;
+}
+
+.memberRow:hover,
+.memberRow:focus-within {
+  background: #f4f7f5;
+}
+
+.memberLink:focus-visible {
+  outline: none;
+}
+
+.memberLink:focus-visible::after {
+  outline: 2px solid #22bf45;
+  outline-offset: -2px;
+}

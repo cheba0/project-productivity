@@ -7,7 +7,6 @@ import {
   type ProjectListResponse,
 } from '../../../entities/project'
 import { ProjectDataCard } from './ProjectDataCard'
-import { AnalyticsProjectsSection } from './AnalyticsProjectsSection'
 import styles from './ProjectsPage.module.css'
 import { useProjectSyncStore } from '../../../store/projectSyncStore'
 
@@ -137,7 +136,6 @@ export function ProjectsPage() {
           </div>
         </>
       )}
-      <AnalyticsProjectsSection />
     </section>
   )
 }

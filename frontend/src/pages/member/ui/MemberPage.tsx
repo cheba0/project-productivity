@@ -1,7 +1,7 @@
 import {useEffect, useState} from 'react'
 import {createPortal} from 'react-dom'
 import {Link, useParams} from 'react-router'
-import {ChevronLeft, ChevronRight, ExternalLink, Pencil} from 'lucide-react'
+import {ExternalLink, Pencil} from 'lucide-react'
 
 import {Button} from '@/shared/ui/button'
 import {getProject, getProjectSprints, type ProjectSprint} from '../../../entities/project'
@@ -10,6 +10,7 @@ import {getProjectSyncStatus} from '../../../entities/project/api/syncProject'
 import {useAuthStore} from '../../../store/authStore'
 import {useProjectHeaderStore} from '../../../store/projectHeaderStore'
 import {useProjectSyncStore} from '../../../store/projectSyncStore'
+import {SprintPicker} from '../../../shared/ui/SprintPicker'
 
 import {EditMemberDialog} from './EditMemberDialog'
 import {MemberActivityPanel} from './MemberActivityPanel'
@@ -61,13 +62,6 @@ function profileUrl(value: string | null): string | null {
   } catch {
     return null
   }
-}
-
-function dateOnly(value: Date): string {
-  const year = value.getFullYear()
-  const month = String(value.getMonth() + 1).padStart(2, '0')
-  const day = String(value.getDate()).padStart(2, '0')
-  return `${year}-${month}-${day}`
 }
 
 function formatDate(value: string): string {
@@ -131,14 +125,7 @@ function MemberDetails({projectId, memberId}: {projectId: string; memberId: stri
         let requestedStart = available.start
         let requestedEnd = available.end
 
-        if (period === 'recent') {
-          const end = new Date()
-          const start = new Date(end)
-          start.setDate(start.getDate() - 29)
-
-          requestedStart = dateOnly(start)
-          requestedEnd = dateOnly(end)
-        } else if (period !== 'all') {
+        if (period !== 'all') {
           const sprint = sprintData.items.find((item) => String(item.number) === period)
 
           if (!sprint) throw new Error('Выбранный спринт не найден.')
@@ -195,41 +182,9 @@ function MemberDetails({projectId, memberId}: {projectId: string; memberId: stri
     setError(null)
     setReload((value) => value + 1)
   }
-
-  const sprintIndex = sprints.findIndex((item) => String(item.number) === period)
-  const previousSprint = sprintIndex > 0 ? sprints[sprintIndex - 1] : undefined
-  const nextSprint = sprintIndex >= 0 ? sprints[sprintIndex + 1] : undefined
-
+  
   const periodControls = headerControlsElement ? createPortal(
-    <div className="flex items-center gap-2">
-      <Button
-        type="button" variant="outline" size="icon" className="size-8"
-        disabled={!previousSprint} aria-label="Предыдущий спринт"
-        onClick={() => previousSprint && changePeriod(String(previousSprint.number))}
-      >
-        <ChevronLeft size={16} aria-hidden="true" />
-      </Button>
-
-      <select
-        value={period} onChange={(event) => changePeriod(event.target.value)}
-        aria-label="Период показателей участника"
-        className="h-8 max-w-[200px] rounded-md border border-solid border-[#cbd4ce] bg-white px-3 text-xs text-[#18201c]"
-      >
-        <option value="all">Весь доступный период</option>
-        <option value="recent">Последние 30 дней</option>
-        {sprints.map((sprint) => (
-          <option key={sprint.number} value={sprint.number}>Спринт {sprint.number}</option>
-        ))}
-      </select>
-
-      <Button
-        type="button" variant="outline" size="icon" className="size-8"
-        disabled={!nextSprint} aria-label="Следующий спринт"
-        onClick={() => nextSprint && changePeriod(String(nextSprint.number))}
-      >
-        <ChevronRight size={16} aria-hidden="true" />
-      </Button>
-    </div>,
+    <SprintPicker value={period} sprints={sprints} onChange={changePeriod} />,
     headerControlsElement,
   ) : null
 
@@ -328,7 +283,7 @@ function MemberDetails({projectId, memberId}: {projectId: string; memberId: stri
         </div>
       )}
 
-      <div className="grid min-w-0 items-stretch gap-4 xl:grid-cols-[310px_minmax(0,1fr)]">
+      <div className="grid min-w-0 items-stretch gap-4 min-[1400px]:grid-cols-[310px_minmax(0,1fr)]">
         <aside className={`${panelClass} p-5`}>
           <div className="flex items-center gap-4">
             <span
@@ -337,7 +292,7 @@ function MemberDetails({projectId, memberId}: {projectId: string; memberId: stri
             >
               {initials}
             </span>
-            <h1 className="!text-lg !leading-snug break-words">{name}</h1>
+            <h1 className="min-w-0 !text-lg !leading-snug [overflow-wrap:anywhere]">{name}</h1>
           </div>
 
           <p className="mt-4 text-xs text-[#748079]">

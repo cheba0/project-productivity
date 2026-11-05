@@ -313,7 +313,7 @@ export function MemberActivityMap({
 
   return (
     <div className="flex min-h-[460px] min-w-0 flex-col">
-      <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_130px]">
+      <div className="grid min-w-0 gap-6 min-[1400px]:grid-cols-[minmax(0,1fr)_130px]">
         <div
           className="min-w-0 overflow-x-auto pb-4 focus-visible:outline-2 focus-visible:outline-[#22bf45]"
           tabIndex={0}
@@ -368,7 +368,7 @@ export function MemberActivityMap({
           </div>
         </div>
 
-        <div className="flex flex-wrap gap-5 lg:flex-col lg:border-0 lg:border-l lg:border-solid lg:border-[#edf0ee] lg:pl-5">
+        <div className="flex min-w-0 flex-wrap gap-5 min-[1400px]:flex-col min-[1400px]:border-0 min-[1400px]:border-l min-[1400px]:border-solid min-[1400px]:border-[#edf0ee] min-[1400px]:pl-5">
           <div>
             <strong className="block text-3xl">
               {gitlabAvailable ? data.summary.commits : '—'}

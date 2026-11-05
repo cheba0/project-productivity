@@ -127,7 +127,7 @@ export function StudentWorkloadTable({
                 )
 
                 return (
-                  <tr key={student.member_id}>
+                  <tr key={student.member_id} className={styles.memberRow}>
                     <td>
                       <div className={styles.person}>
                         <span
@@ -141,7 +141,8 @@ export function StudentWorkloadTable({
                         <div className={styles.personText}>
                           <Link
                             to={`/projects/${projectId}/members/${student.member_id}`}
-                            className="font-semibold text-inherit no-underline hover:underline">
+                            className={styles.memberLink}
+                          >
                             {student.name || student.email}
                           </Link>
 

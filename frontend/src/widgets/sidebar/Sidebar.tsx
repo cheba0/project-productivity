@@ -1,5 +1,5 @@
 import {useEffect, useState} from 'react'
-import {LayoutGrid, Info, LogOut, Settings} from 'lucide-react'
+import {LayoutGrid, Info, LogOut, Settings, LoaderCircle} from 'lucide-react'
 import {Link, useLocation, useMatch} from 'react-router'
 
 import {getProjects, type ProjectListResponse} from '../../entities/project'
@@ -26,16 +26,6 @@ interface ProjectsResult {
 
 function getInitials(name: string): string {
   return name.trim().split(/\s+/).slice(0, 2).map((part) => part[0]).join('').toUpperCase()
-}
-
-function statusColor(status: string): string {
-  switch (status) {
-    case 'working': return '#22bf45'
-    case 'partial': return '#ffb600'
-    case 'delayed': return '#ff873f'
-    case 'idle': return '#ff4265'
-    default: return '#a6afaa'
-  }
 }
 
 export function Sidebar({
@@ -105,8 +95,20 @@ export function Sidebar({
           <span>Проекты</span>
 
           {email && (
-            <span className="ml-auto text-xs text-[#58655e]" aria-label="Активных проектов">
-              {currentResult?.data?.counts.active ?? '—'}
+            <span className="ml-auto flex items-center text-xs text-[#58655e]">
+              {!currentResult ? (
+                <span role="status" aria-label="Загрузка количества проектов">
+                  <LoaderCircle size={14} className="animate-spin" aria-hidden="true" />
+                </span>
+              ) : currentResult.data ? (
+                <span aria-label={`Активных проектов: ${currentResult.data.counts.active}`}>
+                  {currentResult.data.counts.active}
+                </span>
+              ) : (
+                <span title={currentResult.error ?? 'Не удалось загрузить количество проектов'} aria-label="Ошибка загрузки">
+                  !
+                </span>
+              )}
             </span>
           )}
         </Link>
