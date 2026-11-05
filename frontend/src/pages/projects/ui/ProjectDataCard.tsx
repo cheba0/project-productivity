@@ -110,21 +110,15 @@ export function ProjectDataCard({
           </Link>
         </h2>
 
-        {!archived && (
-          <Link
-            className={styles.settings}
-            to={`/projects/${project.id}/settings`}
-            state={{ projectName: project.name }}
-            aria-label={`Настройки проекта «${project.name}»`}
-            title="Настройки проекта"
-          >
-            <Settings
-              size={17}
-              strokeWidth={1.5}
-              aria-hidden="true"
-            />
-          </Link>
-        )}
+        <Link
+          className={styles.settings}
+          to={`/projects/${project.id}/settings`}
+          state={{projectName: project.name}}
+          aria-label={`Настройки проекта «${project.name}»`}
+          title="Настройки проекта"
+        >
+          <Settings size={17} strokeWidth={1.5} aria-hidden="true" />
+        </Link>
       </header>
 
       <span className={styles.badge}>

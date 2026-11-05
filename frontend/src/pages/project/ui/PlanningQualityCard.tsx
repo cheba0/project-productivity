@@ -1,11 +1,6 @@
-import type {
-  ProjectPlanningQuality,
-} from '../../../entities/project/api/getProjectDashboard'
-
-import styles from './PlanningQualityCard.module.css'
-
-interface PlanningQualityCardProps {
-  data: ProjectPlanningQuality | undefined
+import type {DashboardTask,} from '../../../entities/project/api/getProjectDashboard'
+import {getTaskQuality,} from '../../../entities/project/lib/taskQuality'
+interface PlanningQualityCardProps {tasks: DashboardTask[]
   redmineAvailable: boolean
   periodLabel: string
 }
@@ -14,121 +9,160 @@ const categories = [
   { key: 'normal', label: 'Норма', color: '#79d88c' },
   { key: 'warning', label: 'Внимание', color: '#ffd166' },
   { key: 'error', label: 'Ошибка планирования', color: '#ff9daf' },
-  { key: 'unplanned', label: 'Без оценки', color: '#dfe5e1' },
+  { key: 'planned', label: 'Запланировано', color: '#dfe5e1' },
 ] as const
 
-const formatter = new Intl.NumberFormat('ru-RU', {
-  maximumFractionDigits: 1,
-})
+type Category = (typeof categories)[number]['key']
 
-function percent(value: number | null): string {
-  return value === null ? '—' : `${formatter.format(value)}%`
+const formatter = new Intl.NumberFormat('ru-RU', {maximumFractionDigits: 1,})
+
+function percent(value: number | null): string {return value === null ? '—' : `${formatter.format(value)}%`}
+
+function calculateQuality(tasks: DashboardTask[]) {
+  const counts: Record<Category, number> = {
+    normal: 0,
+    warning: 0,
+    error: 0,
+    planned: 0,
+  }
+
+  for (const task of tasks) {
+    const category = getTaskQuality(task)
+
+    if (category !== null) {
+      counts[category] += 1
+    }
+  }
+
+  const completed = counts.normal + counts.warning + counts.error
+
+  const total = completed + counts.planned
+
+  return {
+    counts,
+    total,
+    normalCompletedPercent:
+      completed > 0
+        ? (counts.normal / completed) * 100
+        : null,
+  }
 }
 
 export function PlanningQualityCard({
-  data,
+  tasks,
   redmineAvailable,
   periodLabel,
 }: PlanningQualityCardProps) {
-  if (!redmineAvailable || !data) {
+  if (!redmineAvailable) {
     return (
-      <section className={styles.panel}>
-        <h2>Качество планирования</h2>
+      <section className="min-w-0 rounded-2xl border border-solid border-[#e3e8e5] bg-white p-5">
+        <h2 className="m-0 text-[15px] font-bold">
+          Качество планирования
+        </h2>
 
-        <p className={styles.note}>
-          {!redmineAvailable
-            ? 'Подключите Redmine, чтобы видеть показатели.'
-            : 'Backend не вернул показатели качества планирования.'}
+        <p className="mt-3 text-xs text-[#748079]">
+          Подключите Redmine, чтобы видеть показатели.
         </p>
       </section>
     )
   }
 
-  // Геометрия диаграммы строится по количествам.
-  // Это позволяет избежать щелей из-за округления процентов.
+  const quality = calculateQuality(tasks)
+
   let position = 0
 
   const stops = categories.map((category) => {
     const start = position
 
-    position += data.total > 0
-      ? (data.counts[category.key] / data.total) * 100
+    position += quality.total > 0
+      ? (quality.counts[category.key] / quality.total) * 100
       : 0
 
     return `${category.color} ${start}% ${position}%`
   })
 
-  const background = data.total > 0
+  const background = quality.total > 0
     ? `conic-gradient(${stops.join(', ')})`
     : '#edf0ee'
 
   return (
-    <section className={styles.panel}>
-      <header className={styles.header}>
-        <div>
-          <h2>Качество планирования</h2>
-          <p className={styles.note}>За выбранный период</p>
-        </div>
+    <section className="min-w-0 rounded-2xl border border-solid border-[#e3e8e5] bg-white p-5 shadow-sm">
+      <header className="flex flex-wrap items-start justify-between gap-3">
+        <h2 className="m-0 text-[15px] font-bold">
+          Качество планирования
+        </h2>
 
-        <span className={styles.period}>{periodLabel}</span>
+        <span className="rounded-full border border-solid border-[#d6ded8] px-2.5 py-1 text-[11px]">
+          {periodLabel}
+        </span>
       </header>
 
-      <div className={styles.chart}>
+      <div className="flex justify-center py-6">
         <div
-          className={styles.ring}
+          className="grid size-44 place-items-center rounded-full"
           style={{ background }}
-          aria-hidden="true"
         >
-          <div className={styles.center}>
-            <strong>
-              {data.total > 0
-                ? percent(data.percentages.normal)
-                : '—'}
+          <div className="flex size-[126px] flex-col items-center justify-center rounded-full bg-white p-3 text-center">
+            <strong className="text-[30px] leading-tight text-[#18201c]">
+              {percent(quality.normalCompletedPercent)}
             </strong>
 
-            <span>
-              {data.total > 0 ? 'задач в норме' : 'нет задач'}
+            <span className="mt-1 text-[11px] leading-snug text-[#748079]">
+              {quality.normalCompletedPercent === null
+                ? 'Нет данных о выполненных'
+                : 'выполненных в норме'}
             </span>
           </div>
         </div>
       </div>
 
-      <table className={styles.legend}>
-        <caption className={styles.srOnly}>
-          Качество планирования: количество и доля задач
+      <table className="w-full border-collapse text-xs">
+        <caption className="sr-only">
+          Количество и доля задач в каждой категории качества
         </caption>
 
-        <thead className={styles.srOnly}>
+        <thead className="sr-only">
           <tr>
             <th scope="col">Категория</th>
             <th scope="col">Количество задач</th>
-            <th scope="col">Доля</th>
+            <th scope="col">Доля задач диаграммы</th>
           </tr>
         </thead>
 
         <tbody>
-          {categories.map((category) => (
-            <tr key={category.key}>
-              <th scope="row">
-                <span
-                  className={styles.dot}
-                  style={{ backgroundColor: category.color }}
-                  aria-hidden="true"
-                />
-                {category.label}
-              </th>
+          {categories.map((category) => {
+            const count = quality.counts[category.key]
 
-              <td>{data.counts[category.key]}</td>
-              <td>{percent(data.percentages[category.key])}</td>
-            </tr>
-          ))}
+            const share = quality.total > 0
+              ? (count / quality.total) * 100
+              : null
+
+            return (
+              <tr key={category.key}>
+                <th
+                  scope="row"
+                  className="border-0 border-t border-solid border-[#edf0ee] py-3 text-left font-normal"
+                >
+                  <span
+                    className="mr-2 inline-block size-2.5 rounded-[3px]"
+                    style={{ backgroundColor: category.color }}
+                    aria-hidden="true"
+                  />
+                  {category.label}
+                </th>
+
+                <td className="border-0 border-t border-solid border-[#edf0ee] py-3 pl-3 text-right font-semibold">
+                  {count}
+                </td>
+
+                <td className="border-0 border-t border-solid border-[#edf0ee] py-3 pl-3 text-right text-[#748079]">
+                  {percent(share)}
+                </td>
+              </tr>
+            )
+          })}
         </tbody>
       </table>
-
-      <p className={styles.explanation}>
-        Норма — превышение оценки до 10%, внимание — до 20%,
-        ошибка — более 20%. Учитываются и незавершённые задачи.
-      </p>
     </section>
   )
 }

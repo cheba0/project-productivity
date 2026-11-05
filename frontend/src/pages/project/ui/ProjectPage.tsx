@@ -644,13 +644,19 @@ function ProjectDashboardPage({
           <div className={styles.chartsRow}>
             <TaskHoursChart
               tasks={dashboard.tasks}
+              sprints={sprints}
+              today={today}
+              selectedPeriod={period}
+              onSelectSprint={(number) => {
+                changePeriod(String(number))
+              }}
               redmineAvailable={
                 dashboard.sources.redmine !== 'not_configured'
               }
             />
 
             <PlanningQualityCard
-              data={dashboard.planning_quality}
+              tasks={dashboard.tasks}
               redmineAvailable={
                 dashboard.sources.redmine !== 'not_configured'
               }

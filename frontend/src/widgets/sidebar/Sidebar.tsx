@@ -1,7 +1,12 @@
-import {LayoutGrid, Info, LogOut, Settings, RefreshCw} from 'lucide-react'
-import { Link, useLocation } from 'react-router'
-import { useAuthStore } from '../../store/authStore'
-import { useProjectSyncStore } from '../../store/projectSyncStore'
+import {useEffect, useState} from 'react'
+import {LayoutGrid, Info, LogOut, Settings} from 'lucide-react'
+import {Link, useLocation, useMatch} from 'react-router'
+
+import {getProjects, type ProjectListResponse} from '../../entities/project'
+import {useAuthStore} from '../../store/authStore'
+import {useProjectSyncStore} from '../../store/projectSyncStore'
+import {CurrentSprint} from './CurrentSprint'
+import {DataSources} from './DataSources'
 
 import styles from './Sidebar.module.css'
 
@@ -13,46 +18,79 @@ interface SidebarProps {
   onOpenSettings: () => void
 }
 
+interface ProjectsResult {
+  key: string
+  data: ProjectListResponse | null
+  error: string | null
+}
+
 function getInitials(name: string): string {
-  return name
-    .trim()
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((part) => part[0])
-    .join('')
-    .toUpperCase()
+  return name.trim().split(/\s+/).slice(0, 2).map((part) => part[0]).join('').toUpperCase()
+}
+
+function statusColor(status: string): string {
+  switch (status) {
+    case 'working': return '#22bf45'
+    case 'partial': return '#ffb600'
+    case 'delayed': return '#ff873f'
+    case 'idle': return '#ff4265'
+    default: return '#a6afaa'
+  }
 }
 
 export function Sidebar({
-  userName,
-  loggingOut = false,
-  onLogout,
-  onOpenStatusLegend,
-  onOpenSettings,
+  userName, loggingOut = false, onLogout, onOpenStatusLegend, onOpenSettings,
 }: SidebarProps) {
-  const { pathname } = useLocation()
-  const email = useAuthStore((state) => state.user?.email)
+  const {pathname} = useLocation()
+  const projectMatch = useMatch('/projects/:projectId/*')
 
-  const syncing = useProjectSyncStore((state) => state.syncing)
-  const syncMessage = useProjectSyncStore((state) => state.message)
-  const syncErrors = useProjectSyncStore((state) => state.errors)
-  const syncOwnedProjects = useProjectSyncStore(
-    (state) => state.syncOwnedProjects,
-  )
+  const user = useAuthStore((state) => state.user)
+  const email = user?.email
 
-  const isProjectsSection =
-    pathname === '/' || pathname.startsWith('/projects/')
+  const syncRevision = useProjectSyncStore((state) => state.revision)
+
+  const [projectsResult, setProjectsResult] = useState<ProjectsResult | null>(null)
+
+  const requestKey = JSON.stringify([email, pathname, syncRevision])
+  const currentResult = projectsResult?.key === requestKey ? projectsResult : null
+
+  const isHome = pathname === '/'
+  const isCreatePage = pathname === '/projects/new'
+  const currentProjectId = isCreatePage ? undefined : projectMatch?.params.projectId
+  const isProjectsSection = isHome || pathname.startsWith('/projects/')
+
+  const displayName =
+    [user?.first_name, user?.last_name].filter(Boolean).join(' ') || userName || email || ''
+
+  useEffect(() => {
+    if (!email) return
+
+    const controller = new AbortController()
+
+    getProjects('active', controller.signal)
+      .then((data) => {
+        if (controller.signal.aborted) return
+        setProjectsResult({key: requestKey, data, error: null})
+      })
+      .catch((reason: unknown) => {
+        if (controller.signal.aborted) return
+
+        setProjectsResult({
+          key: requestKey,
+          data: null,
+          error: reason instanceof Error ? reason.message : 'Не удалось загрузить проекты.',
+        })
+      })
+
+    return () => controller.abort()
+  }, [email, requestKey])
 
   return (
     <aside className={styles.sidebar}>
       <Link className={styles.brand} to="/">
         <span className={styles.logo} aria-hidden="true">
-          <span />
-          <span />
-          <span />
-          <span />
+          <span /><span /><span /><span />
         </span>
-
         <span>ТПУ.Метрика</span>
       </Link>
 
@@ -60,98 +98,52 @@ export function Sidebar({
         <p className={styles.caption}>Меню</p>
 
         <Link
-          className={`${styles.navLink} ${
-            isProjectsSection ? styles.active : ''
-          }`}
-          to="/"
-          aria-current={pathname === '/' ? 'page' : undefined}
+          className={`${styles.navLink} ${isProjectsSection ? styles.active : ''}`}
+          to="/" aria-current={pathname === '/' ? 'page' : undefined}
         >
           <LayoutGrid size={23} aria-hidden="true" />
           <span>Проекты</span>
+
+          {email && (
+            <span className="ml-auto text-xs text-[#58655e]" aria-label="Активных проектов">
+              {currentResult?.data?.counts.active ?? '—'}
+            </span>
+          )}
         </Link>
       </nav>
 
-      <section
-        className={styles.integrationPanel}
-        aria-label="Источники данных"
-        aria-busy={syncing}
-      >
-        <p className={styles.integrationCaption}>
-          Источники данных
-        </p>
+      <DataSources disabled={loggingOut} />
 
-        <div className={styles.integrationNames}>
-          <strong>GitLab</strong>
-          <strong>Redmine</strong>
-        </div>
-
-        <button
-          className={styles.integrationRefresh}
-          type="button"
-          disabled={syncing || !email}
-          onClick={() => {
-            if (email) {
-              void syncOwnedProjects(email)
-            }
-          }}
-        >
-          <RefreshCw size={16} aria-hidden="true" />
-          {syncing ? 'Обновляем…' : 'Обновить данные'}
-        </button>
-
-        {syncMessage && (
-          <p className={styles.integrationMessage} role="status">
-            {syncMessage}
-          </p>
-        )}
-
-        {syncErrors.length > 0 && (
-          <div className={styles.integrationErrors} role="alert">
-            {syncErrors.map((error, index) => (
-              <p key={`${index}-${error}`}>{error}</p>
-            ))}
-          </div>
-        )}
-      </section>
-      
       <div className={styles.bottom}>
-        <button
-          className={styles.action}
-          type="button"
-          onClick={onOpenStatusLegend}
-        >
+
+        {email && currentProjectId && (
+          <CurrentSprint key={currentProjectId} projectId={currentProjectId} refreshKey={pathname} />
+        )}
+
+        <button className={styles.action} type="button" onClick={onOpenStatusLegend}>
           <Info size={18} aria-hidden="true" />
           Шкала статусов
         </button>
 
-        <button
-          className={styles.action}
-          type="button"
-          onClick={onOpenSettings}
-          aria-haspopup="dialog"
-        >
+        <button className={styles.action} type="button" onClick={onOpenSettings} aria-haspopup="dialog">
           <Settings size={18} aria-hidden="true" />
           Настройки
         </button>
 
         <button
-          className={styles.action}
-          type="button"
-          disabled={loggingOut || !userName}
-          onClick={onLogout}
+          className={styles.action} type="button"
+          disabled={loggingOut || !email} onClick={onLogout}
         >
           <LogOut size={18} aria-hidden="true" />
           {loggingOut ? 'Выходим…' : 'Выйти'}
         </button>
 
-        {userName && (
+        {displayName && (
           <div className={styles.profile}>
-            <span className={styles.avatar} aria-hidden="true">
-              {getInitials(userName)}
-            </span>
+            <span className={styles.avatar} aria-hidden="true">{getInitials(displayName)}</span>
 
             <div className={styles.profileText}>
-              <strong>{userName}</strong>
+              <strong>{displayName}</strong>
               <span>Пользователь</span>
             </div>
           </div>
