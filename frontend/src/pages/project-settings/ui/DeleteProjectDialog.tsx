@@ -1,132 +1,109 @@
-import { useEffect, useId, useRef, useState } from 'react'
-import { X } from 'lucide-react'
+import {useId, useRef, useState, type FormEvent} from 'react'
+import {useNavigate} from 'react-router'
 
-import styles from './DeleteProjectDialog.module.css'
+import {Button} from '@/shared/ui/button'
+import {Input} from '@/shared/ui/input'
+import {Label} from '@/shared/ui/label'
+import {Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle} from '@/shared/ui/dialog'
 
-type DeleteProjectDialogProps = {
-  open: boolean
+import {deleteProject} from '../../../entities/project/api/deleteProject'
+import {useProjectSyncStore} from '../../../store/projectSyncStore'
+interface DeleteProjectDialogProps {
+  projectId: string
   projectName: string
+  open: boolean
   onClose: () => void
 }
 
-export function DeleteProjectDialog({
-  open,
-  projectName,
-  onClose,
-}: DeleteProjectDialogProps) {
-  const dialogRef = useRef<HTMLDialogElement>(null)
+export function DeleteProjectDialog({projectId, projectName, open, onClose}: DeleteProjectDialogProps) {
+  const navigate = useNavigate()
+  const inputId = useId()
+  const submitting = useRef(false)
+
   const [confirmation, setConfirmation] = useState('')
+  const [deleting, setDeleting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
-  const titleId = useId()
-  const descriptionId = useId()
+  const confirmed = projectName.length > 0 && confirmation === projectName
 
-  const isConfirmed =
-    projectName.length > 0 && confirmation === projectName
+  function close() {
+    if (submitting.current) return
 
-  useEffect(() => {
-    const dialog = dialogRef.current
-
-    if (!dialog) return
-
-    if (open && !dialog.open) {
-      dialog.showModal()
-    } else if (!open && dialog.open) {
-      dialog.close()
-    }
-  }, [open])
-
-  function closeDialog() {
-    dialogRef.current?.close()
-  }
-
-  function handleClose() {
     setConfirmation('')
+    setError(null)
     onClose()
   }
 
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+
+    if (!confirmed || submitting.current) return
+
+    submitting.current = true
+    setDeleting(true)
+    setError(null)
+
+    try {
+      await deleteProject(projectId, confirmation)
+
+      setConfirmation('')
+      onClose()
+      navigate('/', {replace: true})
+      useProjectSyncStore.getState().invalidateProjects()
+    } catch (reason: unknown) {
+      setError(reason instanceof Error ? reason.message : 'Не удалось удалить проект.')
+    } finally {
+      submitting.current = false
+      setDeleting(false)
+    }
+  }
+
   return (
-    <dialog
-      ref={dialogRef}
-      className={styles.dialog}
-      aria-labelledby={titleId}
-      aria-describedby={descriptionId}
-      onClose={handleClose}
-      onClick={(event) => {
-        if (event.target !== event.currentTarget) return
+    <Dialog open={open} onOpenChange={(nextOpen) => {
+      if (!nextOpen) close()
+    }}>
+      <DialogContent className="rounded-2xl bg-white p-5 text-[#18201c] sm:max-w-[440px]">
+        <DialogHeader className="text-left">
+          <DialogTitle className="text-base font-bold">Удалить проект?</DialogTitle>
 
-        const rect = event.currentTarget.getBoundingClientRect()
+          <DialogDescription className="text-xs leading-relaxed text-[#748079]">
+            Проект «{projectName}» и все его данные будут удалены без возможности восстановления.
+          </DialogDescription>
+        </DialogHeader>
 
-        const clickedOutside =
-          event.clientX < rect.left ||
-          event.clientX > rect.right ||
-          event.clientY < rect.top ||
-          event.clientY > rect.bottom
+        <form onSubmit={handleSubmit} className="grid gap-4" aria-busy={deleting}>
+          <div className="grid gap-2">
+            <Label htmlFor={inputId} className="text-xs font-normal text-[#58655e]">
+              Для подтверждения введите точное название проекта
+            </Label>
 
-        if (clickedOutside) {
-          closeDialog()
-        }
-      }}
-    >
-      <header className={styles.header}>
-        <h2 id={titleId}>Удалить проект?</h2>
+            <Input
+              id={inputId} name="projectNameConfirmation"
+              value={confirmation} onChange={(event) => {
+                setConfirmation(event.target.value)
+                setError(null)
+              }}
+              placeholder="Название проекта" autoComplete="off" spellCheck={false}
+              disabled={deleting} required className="h-9 bg-white"
+            />
+          </div>
 
-        <button
-          className={styles.closeButton}
-          type="button"
-          onClick={closeDialog}
-          aria-label="Закрыть окно"
-        >
-          <X size={20} aria-hidden="true" />
-        </button>
-      </header>
+          {error && <p role="alert" className="text-xs text-[#b42318]">{error}</p>}
 
-      <p id={descriptionId} className={styles.description}>
-        Проект «{projectName}» и все его данные будут удалены
-        без возможности восстановления.
-      </p>
+          <div className="flex justify-end gap-2">
+            <Button
+              type="submit" variant="outline" disabled={!confirmed || deleting}
+              className="border-[#22bf45] bg-[#e6f7eb] text-[#18201c] hover:bg-[#d8f2df]"
+            >
+              {deleting ? 'Удаляем…' : 'Удалить проект'}
+            </Button>
 
-      <form
-        className={styles.form}
-        onSubmit={(event) => event.preventDefault()}
-      >
-        <label className={styles.field}>
-          <span>Для подтверждения введите название проекта</span>
-
-          <input
-            name="projectNameConfirmation"
-            type="text"
-            placeholder="Название проекта"
-            value={confirmation}
-            onChange={(event) => setConfirmation(event.target.value)}
-            autoComplete="off"
-            spellCheck={false}
-            autoFocus
-          />
-        </label>
-
-        <footer className={styles.actions}>
-          <button
-            className={styles.deleteButton}
-            type="button"
-            disabled={!isConfirmed}
-            title={
-              isConfirmed
-                ? 'Удаление пока не подключено'
-                : 'Введите точное название проекта'
-            }
-          >
-            Удалить проект
-          </button>
-
-          <button
-            className={styles.cancelButton}
-            type="button"
-            onClick={closeDialog}
-          >
-            Отмена
-          </button>
-        </footer>
-      </form>
-    </dialog>
+            <Button type="button" variant="outline" disabled={deleting} onClick={close}>
+              Отмена
+            </Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
   )
 }

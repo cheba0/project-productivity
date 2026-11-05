@@ -1,0 +1,609 @@
+.page {
+  display: grid;
+  gap: 20px;
+  min-width: 0;
+  color: #18201c;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 16px;
+}
+
+.breadcrumbs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.breadcrumbs a {
+  color: #859088;
+  text-decoration: none;
+}
+
+.breadcrumbs [aria-current='page'] {
+  font-weight: 650;
+}
+
+.periodControls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.arrowButton,
+.periodSelect {
+  box-sizing: border-box;
+  min-height: 34px;
+  border: 1px solid #ccd6cf;
+  border-radius: 8px;
+  background: #fff;
+  color: #35433a;
+}
+
+.arrowButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  padding: 0;
+  cursor: pointer;
+}
+
+.arrowButton:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.periodSelect {
+  max-width: 220px;
+  padding: 6px 10px;
+  font: inherit;
+  font-size: 12px;
+}
+
+.projectHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px 24px;
+}
+
+.projectHeader h1 {
+  margin: 0;
+  font-size: 23px;
+  font-weight: 750;
+  overflow-wrap: anywhere;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  flex-shrink: 0;
+  padding: 5px 10px;
+  border: 1px solid #d3dcd6;
+  border-radius: 999px;
+  background: #fff;
+  font-size: 11px;
+  line-height: 1.2;
+}
+
+.dates {
+  margin: 0;
+  color: #65736a;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.dates strong {
+  color: #26332b;
+}
+
+.settings {
+  margin-left: auto;
+  color: #65736a;
+  font-size: 12px;
+}
+
+.periodNote {
+  margin: 0;
+  color: #859088;
+  font-size: 12px;
+}
+
+.overview {
+  display: grid;
+  grid-template-columns: minmax(0, 0.93fr) minmax(0, 1.07fr);
+  align-items: stretch;
+  gap: 28px;
+}
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+}
+
+.stat,
+.deadlines {
+  min-width: 0;
+  padding: 18px;
+  border: 1px solid #e1e7e3;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 1px 2px rgb(20 40 28 / 3%);
+}
+
+.stat {
+  display: flex;
+  box-sizing: border-box;
+  min-height: 100px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.stat h2 {
+  margin: 0;
+  color: #859088;
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.stat > strong {
+  font-size: 24px;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.stat p {
+  margin: 0;
+  color: #859088;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.deadlines h2 {
+  margin: 0 0 16px;
+  font-size: 14px;
+}
+
+.tableWrapper {
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  text-align: left;
+}
+
+.table th {
+  padding: 10px 0;
+  border-top: 1px solid #edf0ee;
+  color: #859088;
+  font-size: 10px;
+  font-weight: 400;
+  text-transform: uppercase;
+}
+
+.table td {
+  padding: 12px 0;
+  border-top: 1px solid #edf0ee;
+  vertical-align: top;
+  line-height: 1.5;
+}
+
+.table th:last-child,
+.table td:last-child {
+  padding-left: 12px;
+  text-align: right;
+}
+
+.overdue {
+  color: #e23558;
+  font-weight: 650;
+}
+
+.upcoming {
+  color: #319c4b;
+}
+
+.empty {
+  margin: 0;
+  color: #859088;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.errorPanel {
+  padding: 20px;
+  border: 1px solid #f0cbd2;
+  border-radius: 14px;
+  background: #fff;
+  color: #b42318;
+}
+
+.page button:focus-visible,
+.page select:focus-visible,
+.page a:focus-visible {
+  outline: 2px solid #20bd46;
+  outline-offset: 3px;
+}
+
+.projectIdentity {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.statusDot {
+  display: inline-block;
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #a6afaa;
+}
+
+.statusDot[data-color='green'] {
+  background: #22bf45;
+}
+
+.statusDot[data-color='yellow'] {
+  background: #ffb600;
+}
+
+.statusDot[data-color='orange'] {
+  background: #ff873f;
+}
+
+.statusDot[data-color='red'] {
+  background: #ff4265;
+}
+
+.timeline {
+  display: flex;
+  flex: 1 1 420px;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.timelineProgress {
+  appearance: none;
+  width: 160px;
+  height: 7px;
+  overflow: hidden;
+  border: 0;
+  border-radius: 999px;
+  background: #e6ebe8;
+}
+
+.timelineProgress::-webkit-progress-bar {
+  border-radius: 999px;
+  background: #e6ebe8;
+}
+
+.timelineProgress::-webkit-progress-value {
+  border-radius: 999px;
+  background: #22bf45;
+}
+
+.timelineProgress::-moz-progress-bar {
+  border-radius: 999px;
+  background: #22bf45;
+}
+
+.timelineLabel {
+  color: #748079;
+  font-size: 11px;
+}
+
+.externalLinks {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.externalLink,
+.externalLinkDisabled {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 36px;
+  height: 36px;
+  border: 1px solid #cbd4ce;
+  border-radius: 50%;
+  background: #fff;
+  color: #18201c;
+  font-size: 10px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.externalLink:hover {
+  border-color: #22bf45;
+  background: #edf9f0;
+}
+
+.externalLinkDisabled {
+  opacity: 0.4;
+}
+
+.chartsRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 310px;
+  align-items: stretch;
+  gap: 16px;
+  min-width: 0;
+}
+
+.periodControls button:focus-visible,
+.periodControls select:focus-visible {
+  outline: 2px solid #20bd46;
+  outline-offset: 3px;
+}
+
+@media (max-width: 1100px) {
+  .chartsRow {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 1000px) {
+  .overview {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 600px) {
+  .stats {
+    grid-template-columns: 1fr;
+  }
+
+  .settings {
+    margin-left: 0;
+  }
+}
+
+.notice {
+  margin: 0;
+  padding: 12px 16px;
+  border: 1px solid #e8d9ae;
+  border-radius: 10px;
+  background: #fff8e8;
+  color: #77602a;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.periodControls {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.arrowButton {
+  flex-shrink: 0;
+}
+
+.periodSelect {
+  min-width: 0;
+  width: 100%;
+}
+
+.tableWrapper {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.table td:first-child {
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 1279px) {
+  .chartsRow {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .overview {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 600px) {
+  .page {
+    gap: 16px;
+  }
+
+  .projectHeader {
+    gap: 12px;
+  }
+
+  .timeline {
+    flex-basis: 100%;
+  }
+
+  .stat,
+  .deadlines {
+    padding: 14px;
+  }
+}
+
+
+.overview {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+  align-items: start;
+  gap: 24px;
+}
+
+.stats {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-auto-rows: 120px;
+  gap: 20px;
+}
+
+.stat {
+  height: 120px;
+  min-height: 0;
+  padding: 16px 20px;
+  gap: 8px;
+}
+
+.stat h2 {
+  font-size: 13px;
+  line-height: 1.3;
+}
+
+.stat > strong {
+  font-size: 24px;
+  line-height: 1.15;
+}
+
+.stat p {
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.deadlines {
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  height: 260px;
+  min-height: 0;
+  padding: 16px 18px;
+  overflow: hidden;
+}
+
+.deadlines h2 {
+  flex-shrink: 0;
+  margin: 0 0 12px;
+  font-size: 16px;
+  line-height: 1.4;
+}
+
+.deadlineBody {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.deadlines .table {
+  min-width: 440px;
+  font-size: 14px;
+}
+
+.deadlines .table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 10px 0;
+  background: #fff;
+  font-size: 11px;
+}
+
+.deadlines .table td {
+  padding: 11px 0;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.deadlines .table th:nth-child(2),
+.deadlines .table td:nth-child(2) {
+  padding-left: 16px;
+  color: #748079;
+}
+
+.deadlines .table th:last-child,
+.deadlines .table td:last-child {
+  padding-left: 16px;
+  white-space: nowrap;
+}
+
+.deadlines .empty {
+  font-size: 13px;
+}
+
+.deadlineNote {
+  margin: 10px 0 0;
+  color: #748079;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+@media (max-width: 1279px) {
+  .overview {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 600px) {
+  .stats {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .stat {
+    padding: 16px;
+  }
+
+  .deadlines {
+    padding: 16px;
+  }
+}
+
+.deadlineBody {
+  margin-right: -14px;
+  padding-right: 10px;
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+
+.deadlineBody::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+.deadlineBody::-webkit-scrollbar-track,
+.deadlineBody::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+.deadlineBody::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: transparent;
+}
+
+.deadlineBody[data-scrolling='true'] {
+  scrollbar-color: #b7c3ba transparent;
+}
+
+.deadlineBody[data-scrolling='true']::-webkit-scrollbar-thumb {
+  background: #b7c3ba;
+}
+
+.deadlineBody {
+  transition: scrollbar-color 0.4s ease;
+}
+
+.deadlineBody::-webkit-scrollbar-thumb {
+  transition: background-color 0.4s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .deadlineBody,
+  .deadlineBody::-webkit-scrollbar-thumb {
+    transition: none;
+  }
+}

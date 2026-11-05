@@ -1,0 +1,57 @@
+@layer theme, base, components, utilities;
+
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+@import "tw-animate-css";
+
+@theme inline {
+  --color-background: #ffffff;
+  --color-foreground: #18201c;
+
+  --color-card: #ffffff;
+  --color-card-foreground: #18201c;
+
+  --color-popover: #ffffff;
+  --color-popover-foreground: #18201c;
+
+  --color-primary: #16852f;
+  --color-primary-foreground: #ffffff;
+
+  --color-secondary: #e7f7ec;
+  --color-secondary-foreground: #18201c;
+
+  --color-muted: #f3f6f4;
+  --color-muted-foreground: #68756e;
+
+  --color-accent: #e7f7ec;
+  --color-accent-foreground: #18201c;
+
+  --color-destructive: #c62844;
+  --color-border: #dce0dd;
+  --color-input: #cbd4ce;
+  --color-ring: #22bf45;
+
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+}
+
+/*
+ * Минимальная нормализация новых компонентов shadcn.
+ * Старые страницы сохраняют существующие стили.
+ */
+@layer base {
+  [data-slot] {
+    box-sizing: border-box;
+    border-width: 0;
+    border-style: solid;
+    border-color: var(--color-border);
+  }
+
+  button[data-slot],
+  input[data-slot],
+  textarea[data-slot] {
+    font-family: inherit;
+  }
+}

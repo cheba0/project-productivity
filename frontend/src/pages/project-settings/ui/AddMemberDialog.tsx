@@ -1,124 +1,177 @@
-import { useEffect, useId, useRef } from 'react'
-import { X } from 'lucide-react'
+import { useId, useRef, useState, type FormEvent } from 'react'
 
-import styles from './AddMemberDialog.module.css'
+import { Button } from '@/shared/ui/button'
+import { Input } from '@/shared/ui/input'
+import { Label } from '@/shared/ui/label'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/shared/ui/dialog'
 
-type AddMemberDialogProps = {
+import { addProjectMember } from '../../../entities/project/api/addProjectMember'
+import type { ProjectDto } from '../../../entities/project/api/getProjects'
+
+interface AddMemberDialogProps {
+  projectId: string
   open: boolean
   onClose: () => void
+  onAdded: (member: ProjectDto['members'][number]) => void
 }
 
 export function AddMemberDialog({
+  projectId,
   open,
   onClose,
+  onAdded,
 }: AddMemberDialogProps) {
-  const dialogRef = useRef<HTMLDialogElement>(null)
-  const formRef = useRef<HTMLFormElement>(null)
-  const titleId = useId()
-  const descriptionId = useId()
+  const emailId = useId()
+  const roleId = useId()
 
-  useEffect(() => {
-    const dialog = dialogRef.current
+  const submitting = useRef(false)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
-    if (!dialog) return
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
 
-    if (open && !dialog.open) {
-      formRef.current?.reset()
-      dialog.showModal()
-    } else if (!open && dialog.open) {
-      dialog.close()
+    if (submitting.current) return
+
+    const form = event.currentTarget
+    const data = new FormData(form)
+
+    const email = String(data.get('email') ?? '').trim()
+    const role = String(data.get('role') ?? '').trim()
+
+    if (!email || !role) {
+      setError('Укажите почту и роль участника.')
+      return
     }
-  }, [open])
 
-  function closeDialog() {
-    dialogRef.current?.close()
+    submitting.current = true
+    setSaving(true)
+    setError(null)
+
+    try {
+      const member = await addProjectMember(projectId, {
+        email,
+        role,
+      })
+
+      onAdded(member)
+      form.reset()
+      onClose()
+    } catch (reason: unknown) {
+      setError(
+        reason instanceof Error
+          ? reason.message
+          : 'Не удалось добавить участника.',
+      )
+    } finally {
+      submitting.current = false
+      setSaving(false)
+    }
   }
 
   return (
-    <dialog
-      ref={dialogRef}
-      className={styles.dialog}
-      aria-labelledby={titleId}
-      aria-describedby={descriptionId}
-      onClose={onClose}
-      onClick={(event) => {
-        if (event.target !== event.currentTarget) return
-
-        const rect = event.currentTarget.getBoundingClientRect()
-
-        const clickedOutside =
-          event.clientX < rect.left ||
-          event.clientX > rect.right ||
-          event.clientY < rect.top ||
-          event.clientY > rect.bottom
-
-        if (clickedOutside) {
-          closeDialog()
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen && !submitting.current) {
+          setError(null)
+          onClose()
         }
       }}
     >
-      <header className={styles.header}>
-        <h2 id={titleId}>Добавить участника</h2>
+      <DialogContent className="gap-0 rounded-2xl bg-white p-5 text-[#18201c] sm:max-w-[360px]">
+        <DialogHeader className="text-left">
+          <DialogTitle className="text-base font-bold">
+            Добавить участника
+          </DialogTitle>
 
-        <button
-          className={styles.closeButton}
-          type="button"
-          onClick={closeDialog}
-          aria-label="Закрыть окно"
-        >
-          <X size={20} aria-hidden="true" />
-        </button>
-      </header>
+          <DialogDescription className="sr-only">
+            Укажите почту и роль нового участника проекта.
+          </DialogDescription>
+        </DialogHeader>
 
-      <form
-        ref={formRef}
-        className={styles.form}
-        onSubmit={(event) => event.preventDefault()}
-      >
-        <label className={styles.field}>
-          <span>Почта студента</span>
-          <input
-            name="email"
-            type="email"
-            placeholder="student@tpu.ru"
-            autoComplete="off"
-            autoFocus
-          />
-        </label>
+        <form onSubmit={handleSubmit} className="mt-5 grid gap-4">
+          <div className="grid gap-2">
+            <Label
+              htmlFor={emailId}
+              className="text-xs font-normal text-[#748079]"
+            >
+              Почта студента
+            </Label>
 
-        <label className={styles.field}>
-          <span>Роль</span>
-          <input
-            name="role"
-            type="text"
-            placeholder="Например, Frontend-разработчик"
-          />
-        </label>
+            <Input
+              id={emailId}
+              name="email"
+              type="email"
+              placeholder="student@tpu.ru"
+              maxLength={255}
+              required
+              disabled={saving}
+              className="h-9 rounded-md bg-white text-sm"
+            />
+          </div>
 
-        <p id={descriptionId} className={styles.hint}>
-          Ссылки и токены на GitLab и Redmine студент добавит сам
-          в своём профиле.
-        </p>
+          <div className="grid gap-2">
+            <Label
+              htmlFor={roleId}
+              className="text-xs font-normal text-[#748079]"
+            >
+              Роль
+            </Label>
 
-        <footer className={styles.actions}>
-          <button
-            className={styles.addButton}
-            type="button"
-            disabled
-            title="Добавление участника пока не подключено"
-          >
-            Добавить
-          </button>
+            <Input
+              id={roleId}
+              name="role"
+              type="text"
+              placeholder="Например, Frontend-разработчик"
+              maxLength={100}
+              required
+              disabled={saving}
+              className="h-9 rounded-md bg-white text-sm"
+            />
+          </div>
 
-          <button
-            className={styles.cancelButton}
-            type="button"
-            onClick={closeDialog}
-          >
-            Отмена
-          </button>
-        </footer>
-      </form>
-    </dialog>
+          <p className="text-xs leading-relaxed text-[#748079]">
+            Ссылки и токены на GitLab и Redmine студент добавит сам в своём профиле
+          </p>
+
+          {error && (
+            <p role="alert" className="text-sm text-[#b42318]">
+              {error}
+            </p>
+          )}
+
+          <div className="flex justify-end gap-2 pt-1">
+            <Button
+              type="submit"
+              disabled={saving}
+              variant="outline"
+              className="h-9 border-[#22bf45] bg-[#e6f7eb] text-[#18201c] hover:bg-[#d8f2df]"
+            >
+              {saving ? 'Добавляем…' : 'Добавить'}
+            </Button>
+
+            <Button
+              type="button"
+              variant="outline"
+              disabled={saving}
+              onClick={() => {
+                setError(null)
+                onClose()
+              }}
+              className="h-9 bg-white"
+            >
+              Отмена
+            </Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
   )
 }

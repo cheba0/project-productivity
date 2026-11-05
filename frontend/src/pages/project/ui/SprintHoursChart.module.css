@@ -1,0 +1,135 @@
+.panel {
+  min-width: 0;
+  padding: 20px;
+  border: 1px solid #e3e8e5;
+  border-radius: 16px;
+  background: #fff;
+}
+
+.panel h2,
+.panel h3 {
+  margin: 0;
+}
+
+.panel h2 {
+  font-size: 16px;
+}
+
+.panel h3 {
+  font-size: 14px;
+}
+
+.header,
+.sprintHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.note {
+  margin: 6px 0 0;
+  color: #748079;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.legend {
+  display: flex;
+  gap: 16px;
+  font-size: 12px;
+}
+
+.legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.planMark,
+.actualMark {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+
+.planMark,
+.planBar {
+  background: #b6b1ff;
+}
+
+.actualMark,
+.actualBar {
+  background: #78d78c;
+}
+
+.list {
+  display: grid;
+  gap: 16px;
+  margin-top: 20px;
+}
+
+.sprint {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid #e9edea;
+  border-radius: 12px;
+}
+
+.partial {
+  padding: 4px 8px;
+  border-radius: 12px;
+  background: #fff5df;
+  color: #815d12;
+  font-size: 11px;
+}
+
+.barRow {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) 100px;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+  font-size: 12px;
+}
+
+.barRow strong {
+  text-align: right;
+  font-weight: 600;
+}
+
+.track {
+  height: 14px;
+  overflow: hidden;
+  border-radius: 7px;
+  background: #f0f3f1;
+}
+
+.planBar,
+.actualBar {
+  height: 100%;
+  border-radius: inherit;
+}
+
+.warning {
+  margin: 16px 0 0;
+  padding: 12px;
+  border-radius: 10px;
+  background: #fff5df;
+  color: #815d12;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+@media (max-width: 600px) {
+  .panel,
+  .sprint {
+    padding: 12px;
+  }
+
+  .barRow {
+    grid-template-columns: 32px minmax(0, 1fr) 80px;
+    gap: 8px;
+  }
+}
