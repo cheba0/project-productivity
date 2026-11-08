@@ -32,23 +32,11 @@
 }
 
 .logo {
-  display: grid;
+  display: block;
   flex-shrink: 0;
-  grid-template-columns: repeat(2, 12px);
-  gap: 3px;
-  transform: rotate(-8deg);
-}
-
-.logo span {
-  width: 12px;
-  height: 12px;
-  border-radius: 2px;
-  background: #22bf45;
-}
-
-.logo span:nth-child(2),
-.logo span:nth-child(3) {
-  background: #14251a;
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
 }
 
 .navigation {

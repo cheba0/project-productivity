@@ -78,9 +78,7 @@ export function Sidebar({
   return (
     <aside className={styles.sidebar}>
       <Link className={styles.brand} to="/">
-        <span className={styles.logo} aria-hidden="true">
-          <span /><span /><span /><span />
-        </span>
+        <img className={styles.logo} src="/tpu-logo.png" alt="" width={32} height={32} />
         <span>ТПУ.Метрика</span>
       </Link>
 

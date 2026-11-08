@@ -7,7 +7,7 @@ import { PlanningQualityCard } from './PlanningQualityCard'
 import { StudentWorkloadTable } from './StudentWorkloadTable'
 import { createPortal } from 'react-dom'
 import { useProjectHeaderStore } from '../../../store/projectHeaderStore'
-
+import {redmineIssueUrl} from '../../../entities/project/lib/redmineIssueUrl'
 import {
   getProject,
   getProjectDashboard,
@@ -569,7 +569,21 @@ function ProjectDashboardPage({
                     <tbody>
                       {deadlines.items.map((task) => (
                         <tr key={task.id}>
-                          <td>#{task.id} {task.title || 'Без названия'}</td>
+                          <td>
+                            {redmineIssueUrl(project.redmine_url, task.id) ? (
+                              <a
+                                href={redmineIssueUrl(project.redmine_url, task.id)!}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-inherit no-underline hover:text-[#169a37] hover:underline"
+                                aria-label={`Открыть задачу ${task.id} в Redmine в новой вкладке`}
+                              >
+                                #{task.id} {task.title || 'Без названия'}
+                              </a>
+                            ) : (
+                              <>#{task.id} {task.title || 'Без названия'}</>
+                            )}
+                          </td>
 
                           <td>{getAssigneeName(task.assigned_to)}</td>
 
@@ -604,6 +618,7 @@ function ProjectDashboardPage({
       <div className={styles.chartsRow}>
         <ProjectTaskHoursChart
           projectId={projectId}
+          redmineUrl={project.redmine_url}
           sprints={sprints}
           today={today}
           selectedPeriod={period}

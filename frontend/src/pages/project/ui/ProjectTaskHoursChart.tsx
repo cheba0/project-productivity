@@ -11,6 +11,7 @@ interface ProjectTaskHoursChartProps {
   selectedPeriod: string
   onSelectSprint: (number: number) => void
   refreshKey: number
+  redmineUrl: string | null
 }
 
 interface ChartResult {
@@ -20,7 +21,7 @@ interface ChartResult {
 }
 
 export function ProjectTaskHoursChart({
-  projectId, sprints, today, selectedPeriod, onSelectSprint, refreshKey,
+  projectId, sprints, today, selectedPeriod, onSelectSprint, refreshKey, redmineUrl,
 }: ProjectTaskHoursChartProps) {
   const revision = useProjectSyncStore((state) => state.revision)
   const [retry, setRetry] = useState(0)
@@ -90,6 +91,7 @@ export function ProjectTaskHoursChart({
       selectedPeriod={selectedPeriod}
       onSelectSprint={onSelectSprint}
       redmineAvailable={current.data.sources.redmine !== 'not_configured'}
+      redmineUrl={redmineUrl}
     />
   )
 }

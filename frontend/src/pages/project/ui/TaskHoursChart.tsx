@@ -2,7 +2,7 @@ import {useEffect, useState, type MouseEvent} from 'react'
 import {createPortal} from 'react-dom'
 import type {DashboardTask, ProjectSprint} from '../../../entities/project/api/getProjectDashboard'
 import {getTaskQuality} from '../../../entities/project/lib/taskQuality'
-
+import {redmineIssueUrl} from '../../../entities/project/lib/redmineIssueUrl'
 interface TaskHoursChartProps {
   tasks: DashboardTask[]
   sprints: ProjectSprint[]
@@ -10,6 +10,7 @@ interface TaskHoursChartProps {
   selectedPeriod: string
   onSelectSprint: (number: number) => void
   redmineAvailable: boolean
+  redmineUrl: string | null
 }
 
 interface SprintGroup {
@@ -81,7 +82,7 @@ function LegendPair({colors, label}: {colors: [string, string]; label: string}) 
 }
 
 export function TaskHoursChart({
-  tasks, sprints, today, selectedPeriod, onSelectSprint, redmineAvailable,
+  tasks, sprints, today, selectedPeriod, onSelectSprint, redmineAvailable, redmineUrl,
 }: TaskHoursChartProps) {
   const [tooltip, setTooltip] = useState<TooltipState | null>(null)
 
@@ -106,14 +107,34 @@ export function TaskHoursChart({
     }
   }, [])
 
-  function showTooltip(event: MouseEvent<HTMLSpanElement>, task: DashboardTask, kind: 'plan' | 'fact', label: string) {
+  function showTooltip(event: MouseEvent<HTMLElement>, task: DashboardTask, kind: 'plan' | 'fact', label: string) {
     const card = event.currentTarget.closest('[data-sprint-card]')
-    if (!card) return
+    const scroll = event.currentTarget.closest('[data-chart-scroll]')
 
-    const rect = card.getBoundingClientRect()
-    const width = Math.min(260, window.innerWidth - 24)
-    const center = rect.left + rect.width / 2
-    const left = Math.max(12, Math.min(center - width / 2, window.innerWidth - width - 12))
+    if (!card || !(scroll instanceof HTMLElement)) return
+
+    const cardRect = card.getBoundingClientRect()
+    const scrollRect = scroll.getBoundingClientRect()
+    const viewportWidth = document.documentElement.clientWidth
+    const viewportHeight = document.documentElement.clientHeight
+
+    const chartLeft = Math.max(12, scrollRect.left + scroll.clientLeft)
+    const chartRight = Math.min(
+      viewportWidth - 12,
+      scrollRect.left + scroll.clientLeft + scroll.clientWidth,
+    )
+
+    const visibleLeft = Math.max(cardRect.left, chartLeft)
+    const visibleRight = Math.min(cardRect.right, chartRight)
+
+    if (visibleRight <= visibleLeft) {
+      setTooltip(null)
+      return
+    }
+
+    const width = Math.min(260, chartRight - chartLeft)
+    const center = (visibleLeft + visibleRight) / 2
+    const left = Math.max(chartLeft, Math.min(center - width / 2, chartRight - width))
 
     setTooltip({
       task,
@@ -121,7 +142,7 @@ export function TaskHoursChart({
       label,
       left,
       width,
-      top: Math.max(12, Math.min(rect.top + 12, window.innerHeight - 170)),
+      top: Math.max(12, Math.min(cardRect.top + 12, viewportHeight - 170)),
     })
   }
 
@@ -152,7 +173,7 @@ export function TaskHoursChart({
   if (unassignedTasks.length > 0) {
     groups.push({key: 'unassigned', sprint: null, tasks: unassignedTasks})
   }
-
+  for (const group of groups) {group.tasks.sort((a, b) => a.id - b.id)}
   const completed = tasks.filter((task) => task.done).length
   const actual = tasks.reduce((sum, task) => sum + validHours(task.spent_hours), 0)
   const planned = tasks.reduce((sum, task) => sum + validHours(task.estimated_hours), 0)
@@ -211,6 +232,7 @@ export function TaskHoursChart({
           </div>
 
           <div
+            data-chart-scroll
             className="min-w-0 flex-1 overflow-x-auto overscroll-x-contain pb-3 focus-visible:outline-2 focus-visible:outline-[#22bf45]"
             tabIndex={0}
             role="region"
@@ -265,6 +287,7 @@ export function TaskHoursChart({
                         const plannedTask = task.start_date === null || task.start_date > today
                         const estimateHeight = validHours(task.estimated_hours) / maximum * 100
                         const actualHeight = validHours(task.spent_hours) / maximum * 100
+                        const issueUrl = redmineIssueUrl(redmineUrl, task.id)
                         const factHovered = visibleTooltip?.task.id === task.id
 
                         const description = [
@@ -294,11 +317,18 @@ export function TaskHoursChart({
                                 {task.estimated_hours === null ? (
                                   <span className="absolute inset-x-0 bottom-1 text-center text-xs text-[#87938c]">—</span>
                                 ) : estimateHeight > 0 ? (
-                                  <span
+                                  <a
+                                    href={issueUrl ?? undefined}
+                                    target={issueUrl ? '_blank' : undefined}
+                                    rel={issueUrl ? 'noopener noreferrer' : undefined}
+                                    aria-label={`Задача ${task.id}: ${task.title}. План ${hours(task.estimated_hours)} ч${issueUrl ? '. Открыть в Redmine в новой вкладке' : ''}`}
                                     onMouseEnter={(event) => showTooltip(event, task, 'plan', appearance.label)}
                                     onMouseLeave={() => setTooltip(null)}
-                                    onClick={(event) => event.stopPropagation()}
-                                    className={`absolute inset-x-0 bottom-0 z-10 cursor-default rounded-t-md transition-shadow duration-150 ${plannedTask ? 'border border-dashed border-[#a6b2aa]' : ''}`}
+                                    onClick={(event) => {
+                                      event.stopPropagation()
+                                      setTooltip(null)
+                                    }}
+                                    className={`absolute inset-x-0 bottom-0 z-10 block rounded-t-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#22bf45] ${issueUrl ? 'cursor-pointer' : 'cursor-default'} ${plannedTask ? 'border border-dashed border-[#a6b2aa]' : ''}`}
                                     style={{
                                       height: `${estimateHeight}%`,
                                       backgroundColor: plannedTask ? 'transparent' : planColor,
@@ -307,11 +337,18 @@ export function TaskHoursChart({
                                 ) : null}
 
                                 {actualHeight > 0 && (
-                                  <span
+                                  <a
+                                    href={issueUrl ?? undefined}
+                                    target={issueUrl ? '_blank' : undefined}
+                                    rel={issueUrl ? 'noopener noreferrer' : undefined}
+                                    aria-label={`Задача ${task.id}: ${task.title}. Факт ${hours(task.spent_hours)} ч${issueUrl ? '. Открыть в Redmine в новой вкладке' : ''}`}
                                     onMouseEnter={(event) => showTooltip(event, task, 'fact', appearance.label)}
                                     onMouseLeave={() => setTooltip(null)}
-                                    onClick={(event) => event.stopPropagation()}
-                                    className="absolute bottom-0 left-1/2 z-20 block -translate-x-1/2 cursor-default rounded-t-[5px] transition-shadow duration-150"
+                                    onClick={(event) => {
+                                      event.stopPropagation()
+                                      setTooltip(null)
+                                    }}
+                                    className={`absolute bottom-0 left-1/2 z-20 block -translate-x-1/2 rounded-t-[5px] transition-shadow duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#22bf45] ${issueUrl ? 'cursor-pointer' : 'cursor-default'}`}
                                     style={{
                                       width: FACT_WIDTH,
                                       height: `${actualHeight}%`,
