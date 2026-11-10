@@ -2,13 +2,20 @@
 
 One TPU project combines GitLab and Redmine project URLs and tokens using
 POST /api/projects or PATCH /api/projects/{id}. Both sources are optional
-individually. Encrypted tokens never appear in API responses.
+individually. Encrypted tokens never appear in API responses. An authenticated
+POST /api/projects/integrations/verify checks URL+token without saving it.
+Provider URLs are validated against an exact public HTTPS host allowlist.
+One project can connect GitLab, Redmine, or both.
 
 GET /api/projects/{id}/sync-status reports status, cached-data availability,
 timestamps, error text and data period.
 POST /api/projects/{id}/sync (owner only) forces synchronization.
-The project_sync_worker service checks active projects every minute; default
-refresh interval is 900 seconds (PROJECT_SYNC_INTERVAL_SECONDS).
+On POST /api/projects or PATCH with changed integration fields, the auth API
+starts a best-effort sync after returning its response. Independently, the
+project_sync_worker service checks for new/pending changes every 10 seconds
+(PROJECT_SYNC_POLL_SECONDS), and the default refresh interval remains
+900 seconds (PROJECT_SYNC_INTERVAL_SECONDS). Failed syncs retain the prior
+good snapshot and report last_error via sync-status.
 
 Direct GitLab sync includes merge requests separately from merge commits:
 `merge_requests_created` and `merge_requests_merged` summary counts,
@@ -21,8 +28,12 @@ encrypted GitLab project token, one sync combines **live GitLab
 commits/MRs** with **read-only legacy Redmine data**. A live provider
 takes precedence over its own legacy source, without double counting.
 
-GET endpoints /dashboard, /workload, /planning-quality, /live-card, and
-member dashboards/activity use snapshots in PostgreSQL. They no longer call
+Successful syncs also export the provider snapshot into the separate
+analytics_db.project_source_snapshots table, keyed by authenticated TPU project
+and workspace UUID (analytics migration a9b8c7d6e5f4). Legacy analytics
+normalized tables are not overwritten. GET endpoints /dashboard, /workload,
+/planning-quality, /live-card, and member dashboards/activity use the auth
+PostgreSQL snapshot. They no longer call
 providers on every page load. The cache covers the previous 366 days,
 limited by the project's start date. Missing or out-of-range cache is HTTP 409.
 
