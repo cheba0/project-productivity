@@ -9,6 +9,7 @@ from sqlalchemy import (
     Boolean,
     Date,
     DateTime,
+    JSON,
     ForeignKey,
     Integer,
     Numeric,
@@ -377,4 +378,27 @@ class AnalyticsTimeEntry(Base):
     spent_on: Mapped[date] = mapped_column(
         Date,
         nullable=False,
+    )
+
+
+class ProjectSourceSnapshot(Base):
+    """Read-only provider feed for analytics jobs, keyed by TPU project UUID.
+
+    This does not fabricate a legacy ProjectMapping, which requires a
+    Redmine connection even for GitLab-only projects.
+    """
+    __tablename__ = "project_source_snapshots"
+
+    project_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True), primary_key=True
+    )
+    workspace_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True), nullable=False, index=True
+    )
+    source_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    period_start: Mapped[date] = mapped_column(Date(), nullable=False)
+    period_end: Mapped[date] = mapped_column(Date(), nullable=False)
+    payload: Mapped[dict] = mapped_column(JSON(), nullable=False)
+    synced_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
     )

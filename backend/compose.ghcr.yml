@@ -1,0 +1,25 @@
+# Select the immutable image built by GitHub Actions. Infra services are untouched.
+services:
+  auth_service:
+    image: ${TPU_BACKEND_IMAGE:?TPU_BACKEND_IMAGE is required}
+    build: !reset null
+
+  gitlab_service:
+    image: ${TPU_BACKEND_IMAGE:?TPU_BACKEND_IMAGE is required}
+    build: !reset null
+
+  redmine_service:
+    image: ${TPU_BACKEND_IMAGE:?TPU_BACKEND_IMAGE is required}
+    build: !reset null
+
+  analytics_service:
+    image: ${TPU_BACKEND_IMAGE:?TPU_BACKEND_IMAGE is required}
+    build: !reset null
+
+  analytics_consumer:
+    image: ${TPU_BACKEND_IMAGE:?TPU_BACKEND_IMAGE is required}
+    build: !reset null
+
+  project_sync_worker:
+    image: ${TPU_BACKEND_IMAGE:?TPU_BACKEND_IMAGE is required}
+    build: !reset null

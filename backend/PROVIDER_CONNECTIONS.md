@@ -1,7 +1,10 @@
-# Future GitLab / Redmine URL-and-token connections
+# GitLab / Redmine URL-and-token connections
 
-This branch supports **new projects** using individual HTTPS project URLs
-and encrypted per-project GitLab/Redmine access tokens. The local test
+New projects support individual HTTPS project URLs and encrypted per-project
+GitLab/Redmine access tokens. POST /api/projects automatically starts a
+background sync after saving; the independent worker polls every 10 seconds
+by default. POST /api/projects/integrations/verify can test credentials
+without saving them. GET /api/projects/{id}/sync-status shows results. The local test
 Redmine is never copied or exposed to the production VM. Existing
 analytics_db records are a separate, legacy read-only source.
 
@@ -23,10 +26,10 @@ analytics_db records are a separate, legacy read-only source.
   must have the **same HTTPS hostname** as the project URL. The previously
   possible arbitrary cross-host override is now rejected, protecting the
   GitLab token from being sent to an unrelated endpoint.
-- DNS validation before making the request does **not** pin the IP address
-  for the subsequent HTTPS connection. DNS-rebinding/TOCTOU remains possible
-  without a network egress/proxy enforcement layer. Do not mark Cloud.ru
-  production ready based on URL validation alone.
+- Every outbound request verifies public DNS answers and pins its HTTPS socket
+  to one verified IP. Server-side egress restrictions remain recommended.
+  The legacy Kafka-based producers use their own network clients and require
+  separate protection.
 - `PROJECT_TOKEN_ENCRYPTION_KEY` must be a stable Fernet key, configured
   outside Git; otherwise new project tokens cannot be encrypted/decrypted.
 - A connection must be reachable **from Cloud.ru**, not merely from a

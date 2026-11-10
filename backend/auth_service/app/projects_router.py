@@ -7,7 +7,7 @@ import os
 from datetime import datetime, timezone
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response, status
 from sqlalchemy import delete, func, or_, select
 from sqlalchemy.orm import Session
 
@@ -15,10 +15,12 @@ from auth_service.app.database import get_db
 from auth_service.app.models import User, Workspace, WorkspaceMember
 from auth_service.app.project_models import Project, ProjectActivity, ProjectMember
 from auth_service.app.project_schemas import (
-    ConfirmDelete, ProjectListFilter, ProjectListResponse, ProjectMemberCreate,
+    ConfirmDelete, IntegrationCheck, ProjectListFilter, ProjectListResponse, ProjectMemberCreate,
     ProjectMemberView, ProjectUpdate, ProjectView, ProjectWrite,
 )
 from auth_service.app.services.session_service import get_user_by_session
+from auth_service.app.services.connection_tasks import sync_project_after_save
+from auth_service.app.live_metrics import _project_endpoint, verify_connection
 
 router = APIRouter(prefix="/api/projects", tags=["Projects"])
 
@@ -160,6 +162,12 @@ def check_activity_thresholds(active: int, delayed: int):
 
 
 def write_fields(project: Project, payload: dict):
+    # Reject unsupported / insecure provider URLs at save time, not minutes later.
+    # Exact host allowlist and public DNS checks also apply to the sync worker.
+    for provider in ("gitlab", "redmine"):
+        candidate = payload.get(provider + "_url")
+        if candidate is not None:
+            _project_endpoint(str(candidate), provider)
     for field in ("name", "showcase_url", "gitlab_url", "redmine_url",
                   "sprint_weeks", "active_after_days", "delayed_after_days",
                   "start_date", "deadline"):
@@ -178,6 +186,12 @@ def write_fields(project: Project, payload: dict):
         # При удалении URL удаляем и зашифрованный токен.
         if service + "_url" in payload and not getattr(project, service + "_url"):
             setattr(project, service + "_token_encrypted", None)
+
+
+@router.post("/integrations/verify")
+def check_integration(data: IntegrationCheck, user: User = Depends(require_user)):
+    """Optional preflight for the frontend form; never persists a token."""
+    return verify_connection(data.service, str(data.url), data.token)
 
 
 @router.get("", response_model=ProjectListResponse)
@@ -200,7 +214,8 @@ def list_projects(filter: ProjectListFilter = ProjectListFilter.active,
 
 
 @router.post("", status_code=201, response_model=ProjectView)
-def create_project(data: ProjectWrite, db: Session = Depends(get_db), user: User = Depends(require_user)):
+def create_project(data: ProjectWrite, background_tasks: BackgroundTasks,
+                   db: Session = Depends(get_db), user: User = Depends(require_user)):
     """Создание проекта: все настройки берутся из формы «Новый проект»."""
     workspace = Workspace(name=data.name)
     db.add(workspace)
@@ -215,6 +230,9 @@ def create_project(data: ProjectWrite, db: Session = Depends(get_db), user: User
                          joined_at=datetime.now(timezone.utc)))
     db.commit()
     db.refresh(project)
+    # Fast path after HTTP 201. The independent worker retries if this task is lost.
+    if project.gitlab_token_encrypted or project.redmine_token_encrypted:
+        background_tasks.add_task(sync_project_after_save, project.id)
     return project_view(db, project)
 
 
@@ -225,6 +243,7 @@ def get_project(project_id: UUID, db: Session = Depends(get_db), user: User = De
 
 @router.patch("/{project_id}", response_model=ProjectView)
 def update_project(project_id: UUID, data: ProjectUpdate,
+                   background_tasks: BackgroundTasks,
                    db: Session = Depends(get_db), user: User = Depends(require_user)):
     """Настройки: PATCH изменяет только переданные поля; токены НЕ возвращаются."""
     project = load_project(db, project_id, user, write=True)
@@ -238,6 +257,9 @@ def update_project(project_id: UUID, data: ProjectUpdate,
     write_fields(project, changes)
     db.commit()
     db.refresh(project)
+    if any(key in changes for key in
+           ("gitlab_url", "gitlab_token", "redmine_url", "redmine_token")):
+        background_tasks.add_task(sync_project_after_save, project.id)
     return project_view(db, project)
 
 

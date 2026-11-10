@@ -29,7 +29,8 @@ def run_once(interval_seconds: int) -> None:
 
 def main() -> None:
     interval = max(60, int(os.getenv("PROJECT_SYNC_INTERVAL_SECONDS", "900")))
-    poll = min(60, interval)
+    # Short polling makes new projects visible promptly; full resync stays 15 min by default.
+    poll = max(5, min(60, int(os.getenv("PROJECT_SYNC_POLL_SECONDS", "10"))))
     log.info("Project metric worker started: interval=%s, polling=%s", interval, poll)
     while True:
         try:

@@ -61,6 +61,13 @@ class ProjectUpdate(BaseModel):
     deadline: date | None = None
 
 
+class IntegrationCheck(BaseModel):
+    """Transient input: tokens are NEVER included in API responses."""
+    service: str = Field(pattern="^(gitlab|redmine)$")
+    url: HttpUrl
+    token: str = Field(min_length=1, repr=False)
+
+
 class ProjectMemberCreate(BaseModel):
     email: str = Field(min_length=3, max_length=255)
     role: str = Field(min_length=1, max_length=100)

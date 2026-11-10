@@ -40,7 +40,8 @@ def _period(project, sprint, start, end):
         if project.deadline and date.today() > project.deadline:
             number = max(1, (project.deadline - project.start_date).days // (project.sprint_weeks * 7) + 1)
         return sprint_dates(project, number)
-    raise HTTPException(409, 'Set project start_date or specify start/end')
+    # A newly connected project has useful metrics even before sprint dates are set.
+    return date.today() - timedelta(days=29), date.today()
 
 
 def _members(db, project):
