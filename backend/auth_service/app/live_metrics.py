@@ -220,6 +220,27 @@ class Api:
         raise HTTPException(503, 'Integration has more than 3000 records; narrow date range')
 
 
+def verify_connection(service: str, url: str, token: str) -> dict:
+    """Verify one real upstream project without persisting or echoing its token."""
+    base, project_ref = _project_endpoint(url, service)
+    if not token or not token.strip():
+        raise HTTPException(422, 'Integration token is required')
+    if service == 'gitlab':
+        payload = Api(base, {'PRIVATE-TOKEN': token}).get(f'/projects/{project_ref}')
+        if not isinstance(payload, dict) or payload.get('id') is None:
+            raise HTTPException(502, 'GitLab returned an unexpected project response')
+        return {'service': service, 'connected': True, 'project_id': str(payload['id']),
+                'project_name': str(payload.get('name') or '')}
+    payload = Api(base, {'X-Redmine-API-Key': token}).get(
+        f'/projects/{quote(project_ref, safe="")}.json'
+    )
+    project_data = payload.get('project') if isinstance(payload, dict) else None
+    if not isinstance(project_data, dict) or project_data.get('id') is None:
+        raise HTTPException(502, 'Redmine returned an unexpected project response')
+    return {'service': service, 'connected': True, 'project_id': str(project_data['id']),
+            'project_name': str(project_data.get('name') or '')}
+
+
 def fetch(project, start: date, end: date):
     """Один вызов получает живые данные; никаких сохранённых/фиктивных метрик."""
     if start > end:
