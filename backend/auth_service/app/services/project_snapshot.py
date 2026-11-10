@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 
 from auth_service.app.live_metrics import compute, fetch
 from auth_service.app.services.analytics_store import fetch_analytics_data, has_analytics_mapping
+from auth_service.app.services.provider_export import export_project_snapshot
 from auth_service.app.project_models import Project, ProjectActivity, ProjectMetricSnapshot
 
 log = logging.getLogger(__name__)
@@ -221,6 +222,14 @@ def sync_project(db: Session, project: Project) -> dict:
             if data["sources"]["gitlab"] in ("live", "database") else None
         )
         db.commit()
+        # The auth snapshot is the frontend source of truth. A separate,
+        # idempotent copy lets analytics jobs process the same real inputs.
+        # Export failures retain the good auth snapshot and are surfaced
+        # through sync-status; the durable worker retries later.
+        export_project_snapshot(
+            project_id, project.workspace_id, row.source_hash,
+            data, start, end,
+        )
         return sync_status(db, db.get(Project, project_id))
     except HTTPException as exc:
         _save_error(db, project_id, str(exc.detail), attempted_at)
