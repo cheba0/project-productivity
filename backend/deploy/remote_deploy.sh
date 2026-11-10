@@ -58,7 +58,7 @@ for spec in \
     "analytics_db analytics_user analytics_db"; do
   read -r service db_user db_name <<< "$spec"
   "${compose[@]}" exec -T "$service" pg_dump -U "$db_user" -d "$db_name" -Fc \
-    > "$backup/${db_name}.dump"
+  </dev/null > "$backup/${db_name}.dump"
   test -s "$backup/${db_name}.dump"
 done
 (cd "$backup" && sha256sum ./*.dump > SHA256SUMS)
