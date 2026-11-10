@@ -64,6 +64,14 @@ def sync_status(db: Session, project: Project) -> dict:
         "last_error": row.last_error if row else None,
         "period": {"start": row.period_start, "end": row.period_end} if valid else None,
         "sync_interval_seconds": max(60, int(os.getenv("PROJECT_SYNC_INTERVAL_SECONDS", "900"))),
+        "providers": {
+            name: {
+                "configured": bool(getattr(project, name + "_url") and
+                                   getattr(project, name + "_token_encrypted")),
+                "source": (row.payload.get("sources", {}).get(name) if valid else None),
+            }
+            for name in ("gitlab", "redmine")
+        },
     }
 
 
