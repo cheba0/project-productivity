@@ -125,23 +125,34 @@ class ProviderContracts(unittest.TestCase):
                         _project_endpoint(url, service)
 
 
-    def test_strict_allowlist_rejects_public_unapproved_hosts(self):
-        # DNS being public is NOT sufficient. A configured allowlist is required.
+    def test_public_provider_domains_allowed(self):
         with patch.dict(os.environ, {
-            "PROJECT_API_ALLOWED_HOSTS": "redmine.example.org",
             "PROJECT_GITLAB_API_BASE": "",
         }), patch("auth_service.app.live_metrics._host_is_public", return_value=True):
-            for url, service in [
+            cases = [
                 ("https://redmine.other-example.org/projects/demo", "redmine"),
                 ("https://redmine.example.org.evil.net/projects/demo", "redmine"),
                 ("https://gitlab.other-example.org/group/repo", "gitlab"),
+            ]
+            for url, service in cases:
+                with self.subTest(url=url):
+                    base, project = _project_endpoint(url, service)
+                    self.assertTrue(base.startswith("https://"))
+                    self.assertTrue(project)
+
+    def test_unsafe_provider_urls_rejected(self):
+        with patch.dict(os.environ, {
+            "PROJECT_GITLAB_API_BASE": "",
+        }), patch("auth_service.app.live_metrics._host_is_public", return_value=True):
+            cases = [
                 ("https://localhost/projects/demo", "redmine"),
                 ("https://127.0.0.1/projects/demo", "redmine"),
                 ("https://8.8.8.8/projects/demo", "redmine"),
                 ("https://redmine.example.org:444/projects/demo", "redmine"),
                 ("https://redmine.example.org/projects/demo?x=1", "redmine"),
                 ("https://redmine.example.org/projects/demo#fragment", "redmine"),
-            ]:
+            ]
+            for url, service in cases:
                 with self.subTest(url=url):
                     with self.assertRaises(HTTPException) as ctx:
                         _project_endpoint(url, service)

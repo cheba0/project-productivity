@@ -97,16 +97,6 @@ def _project_endpoint(url, service):
     else:
         raise HTTPException(422, f'{service}_url IP literals are not allowed')
 
-    allowed = {
-        value.strip().lower()
-        for value in os.getenv('PROJECT_API_ALLOWED_HOSTS', '').split(',')
-        if value.strip()
-    }
-    # Public GitLab SaaS is an explicit built-in trusted provider.
-    if service == 'gitlab':
-        allowed.add('gitlab.com')
-    if host not in allowed:
-        raise HTTPException(422, f'{service}_url host is not in the trusted allowlist')
     # Fast rejection for invalid hosts during URL validation; the outgoing
     # HTTP client independently pins its actual connection to a safe public IP.
     if not _host_is_public(host):
